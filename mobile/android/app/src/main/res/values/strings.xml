@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Satchel</string>
+    <string name="title_activity_main">Satchel</string>
+    <string name="package_name">com.gethorizontal63.satchel</string>
+    <string name="custom_url_scheme">com.gethorizontal63.satchel</string>
+</resources>

@@ -1,0 +1,16 @@
+{
+  "appId": "com.gethorizontal63.satchel",
+  "appName": "Satchel",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
+  "plugins": {
+    "SystemBars": { "style": "DARK", "insetsHandling": "css" }
+  },
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#1B2238"
+  }
+}

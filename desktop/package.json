@@ -1,0 +1,23 @@
+{
+  "name": "caravan-desktop",
+  "version": "0.1.0",
+  "description": "Caravan desktop client",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "app.caravan.desktop",
+    "productName": "Caravan",
+    "files": ["main.js", "preload.js", "connect.html", "icon.png"],
+    "win": { "target": "nsis", "icon": "icon.png" },
+    "mac": { "target": "dmg", "category": "public.app-category.books" },
+    "linux": { "target": "AppImage", "category": "Office" }
+  }
+}

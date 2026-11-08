@@ -1,0 +1,32 @@
+# dependencies & build output
+node_modules/
+web/dist/
+desktop/dist/
+dist/
+*.tsbuildinfo
+
+# runtime data (database, covers, caches)
+data/
+config/
+*.log
+
+# Android build output & generated files
+mobile/www/
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/app/src/main/assets/public/
+mobile/android/capacitor-cordova-android-plugins/build/
+
+# local-only helper scripts
+test_server.py
+push.py
+
+# secrets & editor/OS noise
+.env
+.env.*
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

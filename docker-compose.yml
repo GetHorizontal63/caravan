@@ -1,0 +1,16 @@
+services:
+  caravan:
+    build: .
+    image: caravan:latest
+    container_name: caravan
+    restart: unless-stopped
+    ports:
+      - "8420:8420"
+    environment:
+      - TZ=Etc/UTC
+      # - CARAVAN_LOG_LEVEL=info
+    volumes:
+      - ./config:/config            # database, cover cache, converted files
+      - /path/to/your/books:/books  # add ":ro" to make it read-only (disables uploads)
+    # On TrueNAS / Linux NAS, match the owner of your book folders:
+    # user: "568:568"
