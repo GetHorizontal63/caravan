@@ -448,6 +448,8 @@ a.list-item:hover { background: var(--bg-elev-2); transform: translateX(2px); }
 }
 .modal {
   width: 100%; max-width: 580px; max-height: calc(100% - 32px); overflow: auto; background: var(--bg-elev-solid);
+  /* own text colour: inside the reader the page's ink colour (dark on a light theme) would otherwise carry over */
+  color: var(--text); user-select: text;
   border: 1px solid var(--line-strong); border-radius: 20px; box-shadow: var(--shadow); animation: pop .2s cubic-bezier(.2,.9,.3,1.2);
 }
 .modal.wide { max-width: 940px; }
