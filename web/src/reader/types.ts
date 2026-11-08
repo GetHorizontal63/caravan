@@ -45,6 +45,8 @@ export interface EngineHandle {
   addHighlight?(a: Annotation): void
   removeHighlight?(a: Annotation): void
   clearSelection?(): void
+  /** Locate a passage (e.g. a highlight made in another format of this book); searches near `near` (0..1) first. */
+  findText?(text: string, near?: number | null): Promise<string | null>
   /** Fractions where sections start, for slider tick marks. */
   sectionFractions?: number[]
 }

@@ -9,9 +9,12 @@ import '@fontsource-variable/fraunces'
 import '@fontsource-variable/literata'
 import './styles.css'
 import { applyAppearance } from './theme'
+import { installNativeBack } from './nativeBack'
 
 // before the first paint, so there's no flash of the wrong colours
 applyAppearance()
+// Satchel: Android back button / gesture navigates instead of closing the app
+installNativeBack()
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1, refetchOnWindowFocus: false } },

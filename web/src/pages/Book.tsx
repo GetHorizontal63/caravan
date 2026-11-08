@@ -46,6 +46,7 @@ export default function BookPage() {
   })
   const [dialog, setDialog] = useState<'identify' | 'edit' | 'cover' | 'collection' | 'series' | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const [picked, setPicked] = useState<number | null>(null)
 
   const update = (nb: BookDetail) => {
     qc.setQueryData(['book', id], nb)
@@ -59,15 +60,19 @@ export default function BookPage() {
   if (q.isError || !b) return <p className="error">{(q.error as Error)?.message ?? 'Not found'}</p>
   const pct = Math.round(b.progress * 100)
   const cover = coverUrl(b)
+  // which version to read / download: the one picked, else the one last read, else the preferred one
+  const files = b.files ?? []
+  const chosen = files.find(f => f.id === picked) ?? files.find(f => f.id === b.locatorFileId) ?? files[0]
+  const fileQuery = chosen && files.length > 1 ? `?file=${chosen.id}` : ''
 
   const facts: [string, ReactNode][] = [
-    ['Format', b.formatLabel],
+    ['Format', files.length > 1 ? files.map(f => f.label).join(' · ') : chosen?.label ?? b.formatLabel],
     ['Published', b.published?.slice(0, 10)],
     ['Publisher', b.publisher],
     ['Pages', b.pageCount],
     ['Language', b.language?.toUpperCase()],
     ['ISBN', b.isbn13],
-    ['Size', formatBytes(b.size)],
+    ['Size', formatBytes(chosen?.size ?? b.size)],
     ['Metadata', sourceLabel[b.metadataSource] ?? b.metadataSource],
   ]
   const others = (list?: BookSummary[]) => (list ?? []).filter(x => x.id !== b.id)
@@ -93,11 +98,11 @@ export default function BookPage() {
             )}
 
             <div className="actions">
-              <button className="btn primary lg" onClick={() => nav(`/read/${b.id}`)}>
+              <button className="btn primary lg" onClick={() => nav(`/read/${b.id}${fileQuery}`)}>
                 <BookOpen size={20} />{b.finished ? 'Read again' : pct > 0 ? 'Continue reading' : 'Start reading'}
               </button>
               {pct > 0 && !b.finished && <ProgressRing value={b.progress} />}
-              <a className="icon-btn" href={authedUrl(`/api/books/${b.id}/file`)} download title="Download"><Download size={21} /></a>
+              <a className="icon-btn" href={authedUrl(`/api/books/${b.id}/file`, { file: chosen?.id })} download title={`Download ${chosen?.label ?? ''}`.trim()}><Download size={21} /></a>
               <button className="icon-btn" title="Add to collection" onClick={() => setDialog('collection')}><FolderPlus size={21} /></button>
               <button className={`icon-btn ${b.favorite ? 'active' : ''}`} title="Favorite" onClick={() => void setState({ favorite: !b.favorite })} style={b.favorite ? { color: 'var(--accent)' } : undefined}>
                 <Heart size={21} fill={b.favorite ? 'currentColor' : 'none'} />
@@ -129,6 +134,18 @@ export default function BookPage() {
                 ]} />
               )}
             </div>
+
+            {files.length > 1 && (
+              <div className="versions" role="radiogroup" aria-label="Version to read or download">
+                <span className="versions-label">Version</span>
+                {files.map(f => (
+                  <button key={f.id} role="radio" aria-checked={chosen?.id === f.id} className={`version ${chosen?.id === f.id ? 'on' : ''}`} onClick={() => setPicked(f.id)} title={f.fileName}>
+                    <b>{f.label}</b>
+                    <span>{formatBytes(f.size)}{f.id === b.locatorFileId && pct > 0 ? ' · last read' : ''}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {b.description && (
               <>

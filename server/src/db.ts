@@ -142,6 +142,37 @@ const migrations: string[] = [
   ALTER TABLE books ADD COLUMN spine TEXT;
   ALTER TABLE books ADD COLUMN spine_sig TEXT;
   `,
+  // one book, several files: same name in the same folder, different formats (Dune.epub + Dune.pdf + Dune.azw3).
+  // books.path/format/size/mtime keep describing the preferred ("primary") version.
+  `
+  CREATE TABLE book_files (
+    id INTEGER PRIMARY KEY,
+    book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    path TEXT NOT NULL UNIQUE,
+    format TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    mtime INTEGER NOT NULL,
+    missing INTEGER NOT NULL DEFAULT 0,
+    added_at INTEGER NOT NULL
+  );
+  CREATE INDEX book_files_book ON book_files(book_id);
+  INSERT INTO book_files(book_id, path, format, size, mtime, missing, added_at) SELECT id, path, format, size, mtime, missing, added_at FROM books;
+
+  -- which version a reading position / annotation was made in; positions are format-specific
+  ALTER TABLE user_books ADD COLUMN file_id INTEGER REFERENCES book_files(id) ON DELETE SET NULL;
+  UPDATE user_books SET file_id = (SELECT f.id FROM book_files f JOIN books b ON b.path = f.path WHERE b.id = user_books.book_id);
+  ALTER TABLE annotations ADD COLUMN file_id INTEGER REFERENCES book_files(id) ON DELETE SET NULL;
+  ALTER TABLE annotations ADD COLUMN fraction REAL;
+  UPDATE annotations SET file_id = (SELECT f.id FROM book_files f JOIN books b ON b.path = f.path WHERE b.id = annotations.book_id);
+
+  -- where an annotation lands in the other versions (found by searching for its text); NULL locator = not found
+  CREATE TABLE annotation_anchors (
+    annotation_id INTEGER NOT NULL REFERENCES annotations(id) ON DELETE CASCADE,
+    file_id INTEGER NOT NULL REFERENCES book_files(id) ON DELETE CASCADE,
+    locator TEXT,
+    PRIMARY KEY (annotation_id, file_id)
+  );
+  `,
 ]
 
 const current = (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version

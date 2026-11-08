@@ -8,7 +8,8 @@
  *
  * The scanner creates the folders (when the library is writable) and picks up whatever is put in them.
  * An image is matched to a book by file name; when the folder holds a single book, any image will do
- * (preferring one called cover.* / spine.*). Folder art beats embedded and downloaded art, and is
+ * (preferring one called cover.* / spine.*). A cover/spine image right beside the book ("cover.jpg",
+ * "Some Book.cover.jpg") wins over both folders. Folder art beats embedded and downloaded art, and is
  * re-read whenever the image file changes.
  */
 import fs from 'node:fs/promises'
@@ -72,7 +73,19 @@ function pick(imgs: string[], bookFile: string, alone: boolean, which: Which): s
   return imgs.find(i => preferred.test(norm(stem(i)))) ?? imgs[0]
 }
 
-async function apply(b: ArtBook, which: Which, dir: string | undefined, file: string | undefined) {
+/**
+ * A cover/spine image right next to the book (not in covers/ or spines/), which wins over those folders:
+ *   "Dune.cover.jpg", "Dune - spine.png", "Dune_cover.webp"  next to Dune.epub, in any folder
+ *   "cover.jpg", "spine.png"                                 when the folder holds just this book
+ */
+function pickBeside(imgs: string[], bookFile: string, alone: boolean, which: Which): string | undefined {
+  const want = norm(stem(bookFile))
+  const own = imgs.find(i => { const s = norm(stem(i)); return s === want + which || s === which + want })
+  if (own) return own
+  return alone ? imgs.find(i => norm(stem(i)) === which) : undefined
+}
+
+async function apply(b: ArtBook, which: Which, dir: string | undefined, file: string | undefined, sigPrefix = '') {
   const sigCol = which === 'cover' ? 'cover_sig' : 'spine_sig'
   if (!dir || !file) {
     // art was removed from the folder: a spine goes away; a cover stays but providers may replace it again
@@ -87,7 +100,8 @@ async function apply(b: ArtBook, which: Which, dir: string | undefined, file: st
   const full = path.join(dir, file)
   const st = await fs.stat(full).catch(() => undefined)
   if (!st) return
-  const sig = `${file}:${st.size}:${Math.floor(st.mtimeMs)}`
+  // "./cover.jpg" (beside the book) and "cover.jpg" (in covers/) are different images
+  const sig = `${sigPrefix}${file}:${st.size}:${Math.floor(st.mtimeMs)}`
   if (sig === b[sigCol]) return
   const data = await fs.readFile(full).catch(() => undefined)
   const stored = data && (which === 'cover' ? await storeCover(b.id, data) : await storeSpine(b.id, data))
@@ -127,10 +141,18 @@ export async function syncFolderArt(libraryId: number, kind: string, onProgress?
     const spineDir = spines ? await artDir(dir, entries, 'spines') : undefined
     const coverImgs = await images(coverDir)
     const spineImgs = await images(spineDir)
+    const besideImgs = await images(dir)
     for (const b of list) {
       try {
-        await apply(b, 'cover', coverDir, pick(coverImgs, b.path, list.length === 1, 'cover'))
-        if (spines) await apply(b, 'spine', spineDir, pick(spineImgs, b.path, list.length === 1, 'spine'))
+        // one book can be several files (formats), so `alone` means one book in the folder, not one file
+        const alone = list.length === 1
+        const art = async (which: Which, subdir: string | undefined, subImgs: string[]) => {
+          const beside = pickBeside(besideImgs, b.path, alone, which)
+          if (beside) await apply(b, which, dir, beside, './')
+          else await apply(b, which, subdir, pick(subImgs, b.path, alone, which))
+        }
+        await art('cover', coverDir, coverImgs)
+        if (spines) await art('spine', spineDir, spineImgs)
         // colour for generated spines (also backfills books whose covers came from elsewhere)
         if (b.cover && !coverColor(b.cover, b.cover_color)) {
           const c = await dominantColor(b.cover)

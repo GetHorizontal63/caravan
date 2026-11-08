@@ -41,6 +41,7 @@ export function NotesList({ items, onPick, onDelete }: { items: Annotation[]; on
             <div className="small faint row" style={{ gap: 6 }}>
               {a.kind === 'bookmark' ? <Bookmark size={14} /> : <Highlighter size={14} style={{ color: a.color ?? undefined }} />}
               {a.chapter ?? ''} · {new Date(a.createdAt).toLocaleDateString()}
+              {a.native === false && a.originFormat && <span className="badge" title={a.locator ? 'Made in another version, found here' : 'Made in another version; opens at about the same place'}>{a.originFormat.toUpperCase()}{a.locator ? '' : ' · approx.'}</span>}
             </div>
             {a.text && <div className="note-text" style={{ borderColor: a.color ?? 'var(--line)' }}>{a.text}</div>}
             {a.note && <div className="small" style={{ marginTop: 4 }}>📝 {a.note}</div>}

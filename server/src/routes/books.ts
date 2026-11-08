@@ -3,7 +3,7 @@ import path from 'node:path'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { db, now } from '../db.ts'
 import { requireUser, safeJson } from '../auth.ts'
-import { BOOK_SELECT, detail, getBook, summarize, type BookRow } from '../books.ts'
+import { BOOK_SELECT, detail, fileOf, getBook, summarize, type BookRow } from '../books.ts'
 import { coverPath } from '../covers.ts'
 import { formatOf } from '../formats.ts'
 import { readableFile } from '../convert.ts'
@@ -125,27 +125,32 @@ export default async function bookRoutes(app: FastifyInstance) {
     return reply.send(fs.createReadStream(coverPath(b.spine)))
   })
 
-  /** Original file, as a download. */
-  app.get<{ Params: { id: string } }>('/api/books/:id/file', async (req, reply) => {
+  /** Original file, as a download. `?file=` picks a version (default: the primary one). */
+  app.get<{ Params: { id: string }; Querystring: { file?: string } }>('/api/books/:id/file', async (req, reply) => {
     const b = requireBook(req.params.id, reply)
     if (!b) return
-    const info = formatOf(b.path)
-    reply.header('Content-Disposition', contentDisposition(path.basename(b.path)))
-      .header('Content-Length', fs.statSync(b.path).size)
+    const f = fileOf(b, req.query.file)
+    const info = formatOf(f.path)
+    reply.header('Content-Disposition', contentDisposition(path.basename(f.path)))
+      .header('Content-Length', fs.statSync(f.path).size)
       .type(info?.mime ?? 'application/octet-stream')
-    return reply.send(fs.createReadStream(b.path))
+    return reply.send(fs.createReadStream(f.path))
   })
 
-  /** File in a format the in-browser reader can open (converted and cached when needed). */
-  app.get<{ Params: { id: string } }>('/api/books/:id/content', async (req, reply) => {
+  /** File in a format the in-browser reader can open (converted and cached when needed). `?file=` picks a version. */
+  app.get<{ Params: { id: string }; Querystring: { file?: string } }>('/api/books/:id/content', async (req, reply) => {
     const b = requireBook(req.params.id, reply)
     if (!b) return
-    const info = formatOf(b.path)
+    // no version asked for: resume the one this reader last used
+    const last = db.prepare('SELECT file_id FROM user_books WHERE user_id = ? AND book_id = ?').get(req.user!.id, b.id) as { file_id: number | null } | undefined
+    const f = fileOf(b, req.query.file || last?.file_id)
+    const info = formatOf(f.path)
     if (!info) return reply.code(415).send({ error: 'Unsupported format' })
-    const { file, format } = await readableFile(b, info)
+    const { file, format } = await readableFile(b, info, f)
     const out = formatOf('x.' + format) ?? info
     reply.header('X-Book-Format', format)
-      .header('Access-Control-Expose-Headers', 'X-Book-Format')
+      .header('X-Book-File', String(f.id))
+      .header('Access-Control-Expose-Headers', 'X-Book-Format, X-Book-File')
       .header('Content-Length', fs.statSync(file).size)
       .header('Cache-Control', 'private, max-age=3600')
       .type(out.mime)
@@ -161,11 +166,11 @@ export default async function bookRoutes(app: FastifyInstance) {
       .run({ ...patch, uid, bid: bookId } as any)
   }
 
-  app.put<{ Params: { id: string }; Body: { locator?: string; fraction?: number } }>('/api/books/:id/progress', async (req, reply) => {
+  app.put<{ Params: { id: string }; Body: { locator?: string; fraction?: number; fileId?: number } }>('/api/books/:id/progress', async (req, reply) => {
     const b = requireBook(req.params.id, reply)
     if (!b) return
     const fraction = Math.max(0, Math.min(1, Number(req.body?.fraction) || 0))
-    const patch: Record<string, unknown> = { locator: req.body?.locator ?? null, fraction, last_read: now() }
+    const patch: Record<string, unknown> = { locator: req.body?.locator ?? null, fraction, last_read: now(), file_id: fileOf(b, req.body?.fileId).id || null }
     if (fraction >= 0.995) patch.finished = 1
     upsertUserBook(req.user!.id, b.id, patch)
     return { ok: true }
@@ -186,17 +191,46 @@ export default async function bookRoutes(app: FastifyInstance) {
 
   // ---- annotations (highlights + bookmarks) --------------------------------
 
-  app.get<{ Params: { id: string } }>('/api/books/:id/annotations', async req =>
-    db.prepare('SELECT id, kind, locator, text, note, color, chapter, created_at AS createdAt FROM annotations WHERE user_id = ? AND book_id = ? ORDER BY created_at').all(req.user!.id, Number(req.params.id)))
-
-  app.post<{ Params: { id: string }; Body: { kind?: string; locator: string; text?: string; note?: string; color?: string; chapter?: string } }>('/api/books/:id/annotations', async (req, reply) => {
+  /**
+   * Annotations as seen from one version (`?file=`, default primary). Those made in another version come with
+   * the locator found for this one (`annotation_anchors`), or locator null: `unanchored` says a search already
+   * failed, otherwise the reader should look for the text and report back via PUT /anchor.
+   */
+  app.get<{ Params: { id: string }; Querystring: { file?: string } }>('/api/books/:id/annotations', async (req, reply) => {
     const b = requireBook(req.params.id, reply)
     if (!b) return
-    const { kind = 'highlight', locator, text, note, color, chapter } = req.body ?? ({} as any)
+    const f = fileOf(b, req.query.file)
+    const rows = db.prepare(`SELECT a.id, a.kind, a.locator, a.text, a.note, a.color, a.chapter, a.created_at AS createdAt, a.fraction, a.file_id AS fileId,
+        bf.format AS originFormat, an.locator AS anchor, an.file_id IS NOT NULL AS tried
+      FROM annotations a
+      LEFT JOIN book_files bf ON bf.id = a.file_id
+      LEFT JOIN annotation_anchors an ON an.annotation_id = a.id AND an.file_id = :file
+      WHERE a.user_id = :user AND a.book_id = :book ORDER BY a.created_at`).all({ file: f.id, user: req.user!.id, book: b.id }) as any[]
+    return rows.map(({ anchor, tried, ...a }) => {
+      const native = a.fileId === f.id || a.fileId == null
+      return { ...a, locator: native ? a.locator : anchor ?? null, native, unanchored: !native && !anchor && !!tried }
+    })
+  })
+
+  app.post<{ Params: { id: string }; Body: { kind?: string; locator: string; text?: string; note?: string; color?: string; chapter?: string; fraction?: number; fileId?: number } }>('/api/books/:id/annotations', async (req, reply) => {
+    const b = requireBook(req.params.id, reply)
+    if (!b) return
+    const { kind = 'highlight', locator, text, note, color, chapter, fraction, fileId } = req.body ?? ({} as any)
     if (!locator) return reply.code(400).send({ error: 'locator is required' })
-    const r = db.prepare('INSERT INTO annotations(user_id, book_id, kind, locator, text, note, color, chapter, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
-      .run(req.user!.id, b.id, kind === 'bookmark' ? 'bookmark' : 'highlight', locator, text?.slice(0, 5000) ?? null, note?.slice(0, 5000) ?? null, color ?? null, chapter ?? null, now())
+    const r = db.prepare('INSERT INTO annotations(user_id, book_id, kind, locator, text, note, color, chapter, fraction, file_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+      .run(req.user!.id, b.id, kind === 'bookmark' ? 'bookmark' : 'highlight', locator, text?.slice(0, 5000) ?? null, note?.slice(0, 5000) ?? null, color ?? null, chapter ?? null,
+        typeof fraction === 'number' && Number.isFinite(fraction) ? Math.max(0, Math.min(1, fraction)) : null, fileOf(b, fileId).id || null, now())
     return { id: Number(r.lastInsertRowid) }
+  })
+
+  /** Where an annotation from another version lands in this one (locator null: the text wasn't found). */
+  app.put<{ Params: { aid: string }; Body: { fileId: number; locator: string | null } }>('/api/annotations/:aid/anchor', async (req, reply) => {
+    const a = db.prepare('SELECT book_id FROM annotations WHERE id = ? AND user_id = ?').get(Number(req.params.aid), req.user!.id) as { book_id: number } | undefined
+    const f = a && db.prepare('SELECT id FROM book_files WHERE id = ? AND book_id = ?').get(Number(req.body?.fileId), a.book_id)
+    if (!f) return reply.code(404).send({ error: 'Not found' })
+    db.prepare(`INSERT INTO annotation_anchors(annotation_id, file_id, locator) VALUES (?, ?, ?)
+      ON CONFLICT(annotation_id, file_id) DO UPDATE SET locator = excluded.locator`).run(Number(req.params.aid), Number(req.body.fileId), req.body.locator || null)
+    return { ok: true }
   })
 
   app.patch<{ Params: { aid: string }; Body: { note?: string; color?: string } }>('/api/annotations/:aid', async req => {

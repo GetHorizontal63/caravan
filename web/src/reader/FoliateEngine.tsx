@@ -119,7 +119,7 @@ export default function FoliateEngine(props: EngineProps) {
         draw(Overlayer.highlight, { color: annotation.color ?? '#facc15' })
       })
       view.addEventListener('create-overlay', () => {
-        for (const a of cb.current.annotations) if (a.kind === 'highlight') view.addAnnotation({ value: a.locator, color: a.color })
+        for (const a of cb.current.annotations) if (a.kind === 'highlight' && a.locator) view.addAnnotation({ value: a.locator, color: a.color })
       })
       return view
     }
@@ -337,8 +337,37 @@ export default function FoliateEngine(props: EngineProps) {
             }
           },
           clearSearch: () => view.clearSearch(),
-          addHighlight: a => { for (const v of all()) void v.addAnnotation({ value: a.locator, color: a.color }) },
-          removeHighlight: a => { for (const v of all()) void v.deleteAnnotation({ value: a.locator }) },
+          addHighlight: a => { if (a.locator) for (const v of all()) void v.addAnnotation({ value: a.locator, color: a.color }) },
+          removeHighlight: a => { if (a.locator) for (const v of all()) void v.deleteAnnotation({ value: a.locator }) },
+          async findText(text, near) {
+            const q = text.replace(/\s+/g, ' ').trim()
+            if (q.length < 3) return null
+            const [{ searchMatcher }, { textWalker }] = await Promise.all([import('foliate-js/search.js'), import('foliate-js/text-walker.js')])
+            const match = searchMatcher(textWalker, { defaultLocale: view.language, matchCase: false, matchDiacritics: false, matchWholeWords: false })
+            const sections: any[] = view.book.sections
+            const fr: number[] = view.getSectionFractions?.() ?? []
+            const guess = near == null || !fr.length ? 0 : Math.max(0, fr.findLastIndex(f => f <= near + 1e-9))
+            // nearest sections first: the passage is usually about where it was in the other version
+            const order = sections.map((_, i) => i).filter(i => sections[i].createDocument).sort((a, b) => Math.abs(a - guess) - Math.abs(b - guess))
+            // long passages: find the start, then the end after it, and span both
+            const head = q.slice(0, 120), tail = q.length > 160 ? q.slice(-120) : null
+            for (const index of order) {
+              const doc: Document = await sections[index].createDocument()
+              const first = match(doc, head).next().value
+              if (!first) continue
+              let range = first.range
+              if (tail) for (const m of match(doc, tail)) {
+                if (m.range.compareBoundaryPoints(Range.START_TO_START, range) < 0) continue
+                const r = doc.createRange()
+                r.setStart(range.startContainer, range.startOffset)
+                r.setEnd(m.range.endContainer, m.range.endOffset)
+                range = r
+                break
+              }
+              return view.getCFI(index, range) as string
+            }
+            return null
+          },
           clearSelection: () => view.deselect(),
         }
         cb.current.onReady(handle, format === 'cbz' ? [] : toToc(view.book.toc), { dir: view.book.dir })

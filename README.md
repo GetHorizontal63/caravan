@@ -30,11 +30,12 @@
 - The desk can be walnut, oak, slate, linen, leather, night, or your own uploaded photo, with a dimmer. "Full screen" is available for edge-to-edge text.
 
 **Library**
-- Multiple libraries (books or comics), each with several folders; scans run on demand and on a schedule.
+- Multiple libraries (books or comics), each with several folders. Library folders are watched: adding, removing or renaming books, or changing anything in `covers/` / `spines/`, triggers a rescan of that library about 15 seconds after things go quiet. Scans also run on a schedule and on demand.
 - **Collections** in each library: hand-picked groups with cover collages, an order you can rearrange, and an "Add to collection" button on every book. Anyone can create one; the creator or an admin can edit it.
 - **Series** from metadata or created by hand. Admins can start a series, add books, renumber, rename or merge, or set a book's series from its page. Manual edits are never overwritten by automatic lookups.
 - Metadata is read from the files themselves (OPF, EXTH, FB2 description, PDF info, ComicInfo.xml) and from Calibre `metadata.opf` / `cover.jpg` sidecar files.
-- **Your own art**: every folder that holds books gets a `covers/` and a `spines/` folder; comic libraries get `covers/` only. The scanner creates them if the library is writable. Put a JPG, PNG or WebP in one with the same name as the book file (`Dune.epub` → `covers/Dune.jpg`, `spines/Dune.png`) and it replaces the embedded or downloaded art on the next scan. A close name also works (`Dune.jpg` for `Frank Herbert - Dune.epub`). In a folder with a single book, any image name works. Editing the image updates it on the next scan; a spine photographed lying down is stood upright automatically.
+- **One book, several formats**: files with the same name in the same folder (`Dune.epub`, `Dune.pdf`, `Dune.azw3`) are one book. Its page lists each version to read or download, and the best format for reading is the default. Your place, bookmarks, highlights and notes follow you between versions. A position from another format opens at the same point in the book, and highlights are found again by their text: exactly in EPUB, MOBI, AZW3, FB2 and converted text, and as "about here" in PDFs. Removing one file keeps the book as long as another version is left.
+- **Your own art**: every folder that holds books gets a `covers/` and a `spines/` folder; comic libraries get `covers/` only. The scanner creates them if the library is writable. Put a JPG, PNG or WebP in one with the same name as the book file (`Dune.epub` → `covers/Dune.jpg`, `spines/Dune.png`) and it replaces the embedded or downloaded art on the next scan. A close name also works (`Dune.jpg` for `Frank Herbert - Dune.epub`). In a folder with a single book, any image name works. A cover or spine image placed right beside the book wins over both folders: `cover.jpg` / `spine.png` when the folder holds just that book, or `Dune.cover.jpg` / `Dune - spine.png` in any folder. Editing the image updates it on the next scan; a spine photographed lying down is stood upright automatically.
 - **Bookshelf view**: switch any library between covers and a wooden bookcase of spines. Series are shelved together first (A–Z, in reading order, with bookends between them), then the remaining books in the chosen sort. Books without spine art get a generated spine in their cover's colour, with title, author and series number; its width follows the page count.
 - If the file has no ISBN in its metadata, the scanner looks for one on the copyright pages (EPUB and PDF text) and in the file name.
 - **Identify** (as in Jellyfin): search by ISBN or by title and author, compare candidates from each provider with their covers, and apply one. You can also edit metadata, lock it, or upload or link a cover.
@@ -110,6 +111,7 @@ The older `JR_*` names still work.
 | `CARAVAN_WEB_DIR` | `./web/dist` | Built web client |
 | `CARAVAN_CALIBRE_CONVERT` | – | Path to `ebook-convert`; enables DOCX/ODT/RTF/LIT/PDB/LRF |
 | `CARAVAN_SCAN_ON_START` | `1` | Set `0` to skip the startup scan |
+| `CARAVAN_WATCH` | `1` | Set `0` to stop watching library folders (rely on scheduled/manual scans only) |
 | `CARAVAN_LOG_LEVEL` | `info` | |
 
 Other settings live in **Admin → Metadata & server**: server name, provider priority, automatic matching, rescan interval, and the Google Books API key.

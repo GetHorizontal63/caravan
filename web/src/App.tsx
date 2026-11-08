@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { Navigate, Route, Routes, useParams, useSearchParams } from 'react-router-dom'
 import { useSession } from './session'
 import Layout from './components/Layout'
 import { Spinner } from './components/ui'
@@ -21,7 +21,8 @@ const AdminPage = lazy(() => import('./admin/AdminPage'))
 /** A fresh reader per book: switching books must not carry over engine, position or panels. */
 function ReaderRoute() {
   const { id } = useParams()
-  return <ReaderPage key={id} />
+  const [params] = useSearchParams()
+  return <ReaderPage key={`${id}:${params.get('file') ?? ''}`} />
 }
 
 export default function App() {

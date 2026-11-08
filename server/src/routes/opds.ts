@@ -4,7 +4,7 @@ import crypto from 'node:crypto'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { db, getSettings } from '../db.ts'
 import { verifyPassword, userFromToken, tokenFrom, type User } from '../auth.ts'
-import { getBook, authorsOf } from '../books.ts'
+import { getBook, authorsOf, filesOf } from '../books.ts'
 import { coverPath } from '../covers.ts'
 import { formatOf } from '../formats.ts'
 import { queryBooks } from './books.ts'
@@ -76,7 +76,8 @@ function bookEntry(id: number) {
     ${b.description ? `<summary type="text">${x(b.description.slice(0, 2000))}</summary>` : ''}
     ${b.cover ? `<link rel="http://opds-spec.org/image" href="/opds/books/${b.id}/cover" type="image/jpeg"/>
     <link rel="http://opds-spec.org/image/thumbnail" href="/opds/books/${b.id}/cover" type="image/jpeg"/>` : ''}
-    <link rel="http://opds-spec.org/acquisition" href="/opds/books/${b.id}/file/${encodeURIComponent(path.basename(b.path))}" type="${x(info?.mime ?? 'application/octet-stream')}"/>
+    ${filesOf(b).map(f => `<link rel="http://opds-spec.org/acquisition" href="/opds/books/${b.id}/file/${encodeURIComponent(path.basename(f.path))}" type="${x(formatOf(f.path)?.mime ?? 'application/octet-stream')}" title="${x(formatOf(f.path)?.label ?? f.format)}"/>`).join('\n    ') ||
+      `<link rel="http://opds-spec.org/acquisition" href="/opds/books/${b.id}/file/${encodeURIComponent(path.basename(b.path))}" type="${x(info?.mime ?? 'application/octet-stream')}"/>`}
   </entry>`
 }
 
@@ -132,12 +133,15 @@ export default async function opdsRoutes(app: FastifyInstance) {
     return reply.type('image/jpeg').send(fs.createReadStream(coverPath(b.cover)))
   })
 
-  app.get<{ Params: { id: string } }>('/opds/books/:id/file/*', async (req, reply) => {
+  app.get<{ Params: { id: string; '*': string } }>('/opds/books/:id/file/*', async (req, reply) => {
     const b = getBook(Number(req.params.id))
     if (!b) return reply.code(404).send('')
-    return reply.type(formatOf(b.path)?.mime ?? 'application/octet-stream')
-      .header('Content-Length', fs.statSync(b.path).size)
-      .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(b.path))}`)
-      .send(fs.createReadStream(b.path))
+    // the file name in the URL says which version
+    const name = decodeURIComponent(req.params['*'] ?? '')
+    const file = filesOf(b).find(f => path.basename(f.path) === name)?.path ?? b.path
+    return reply.type(formatOf(file)?.mime ?? 'application/octet-stream')
+      .header('Content-Length', fs.statSync(file).size)
+      .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(file))}`)
+      .send(fs.createReadStream(file))
   })
 }

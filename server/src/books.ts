@@ -1,3 +1,4 @@
+import path from 'node:path'
 import { db, now } from './db.ts'
 import { safeJson } from './auth.ts'
 import { formatOf } from './formats.ts'
@@ -57,6 +58,29 @@ export function getBook(id: number): BookRow | undefined {
   return db.prepare('SELECT * FROM books WHERE id = ?').get(id) as BookRow | undefined
 }
 
+/** One version (format) of a book on disk. */
+export interface BookFile {
+  id: number
+  book_id: number
+  path: string
+  format: string
+  size: number
+  mtime: number
+  missing: number
+}
+
+/** Available versions, the primary (preferred) one first. */
+export const filesOf = (b: BookRow) =>
+  (db.prepare('SELECT * FROM book_files WHERE book_id = ? AND missing = 0 ORDER BY path = ? DESC, format').all(b.id, b.path) as unknown as BookFile[])
+
+/** The requested version (if it belongs to this book and is available), otherwise the primary one. */
+export function fileOf(b: BookRow, fileId?: string | number | null): BookFile {
+  const wanted = fileId ? db.prepare('SELECT * FROM book_files WHERE id = ? AND book_id = ? AND missing = 0').get(Number(fileId), b.id) as BookFile | undefined : undefined
+  return wanted
+    ?? db.prepare('SELECT * FROM book_files WHERE path = ?').get(b.path) as BookFile | undefined
+    ?? { id: 0, book_id: b.id, path: b.path, format: b.format, size: b.size, mtime: b.mtime, missing: b.missing }
+}
+
 export function setAuthors(bookId: number, names: string[]) {
   db.prepare('DELETE FROM book_authors WHERE book_id = ?').run(bookId)
   const ins = db.prepare('INSERT INTO authors(name, sort_name) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET name = name RETURNING id')
@@ -96,6 +120,7 @@ export interface UserBookRow {
   finished: number
   favorite: number
   last_read: number | null
+  file_id: number | null
 }
 
 /** Compact shape used by grids and shelves. */
@@ -124,7 +149,7 @@ export function summarize(b: BookRow & Partial<UserBookRow> & { authors?: string
 }
 
 export function detail(b: BookRow, userId: number) {
-  const ub = db.prepare('SELECT locator, fraction, finished, favorite, last_read FROM user_books WHERE user_id = ? AND book_id = ?').get(userId, b.id) as UserBookRow | undefined
+  const ub = db.prepare('SELECT locator, fraction, finished, favorite, last_read, file_id FROM user_books WHERE user_id = ? AND book_id = ?').get(userId, b.id) as UserBookRow | undefined
   const info = formatOf(b.path)
   return {
     ...summarize({ ...b, ...ub, authors: null }),
@@ -149,6 +174,12 @@ export function detail(b: BookRow, userId: number) {
     metadataLocked: !!b.metadata_locked,
     providerIds: safeJson<Record<string, string>>(b.provider_ids, {}),
     locator: ub?.locator ?? null,
+    /** the version `locator` belongs to (positions don't carry across formats; `progress` does) */
+    locatorFileId: ub?.file_id ?? null,
+    files: filesOf(b).map(f => {
+      const fi = formatOf(f.path)
+      return { id: f.id, format: f.format, label: fi?.label ?? f.format.toUpperCase(), size: f.size, engine: fi?.engine ?? 'foliate', comic: !!fi?.comic, primary: f.path === b.path, fileName: path.basename(f.path) }
+    }),
     updatedAt: b.updated_at,
   }
 }

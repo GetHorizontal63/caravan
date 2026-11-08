@@ -114,6 +114,21 @@ export interface BookDetail extends BookSummary {
   metadataLocked: boolean
   providerIds: Record<string, string>
   locator: string | null
+  /** the version `locator` belongs to */
+  locatorFileId: number | null
+  /** available versions (formats), the primary one first */
+  files: BookFileInfo[]
+}
+
+export interface BookFileInfo {
+  id: number
+  format: string
+  label: string
+  size: number
+  engine: 'foliate' | 'pdf'
+  comic: boolean
+  primary: boolean
+  fileName: string
 }
 
 export interface Library {
@@ -153,7 +168,17 @@ export interface RemoteBook {
 export interface Annotation {
   id: number
   kind: 'highlight' | 'bookmark'
-  locator: string
+  /** where it is in the version being read; null when made in another version and not (yet) found here */
+  locator: string | null
+  /** position in the book (0..1) when it was made, for finding it in other versions */
+  fraction?: number | null
+  /** the version it was made in */
+  fileId?: number | null
+  originFormat?: string | null
+  /** made in the version being read */
+  native?: boolean
+  /** searched for in this version and not found */
+  unanchored?: boolean
   text: string | null
   note: string | null
   color: string | null

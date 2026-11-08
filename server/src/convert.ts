@@ -13,34 +13,38 @@ const inflight = new Map<string, Promise<string>>()
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
+export interface SourceFile { id: number; path: string; mtime: number }
+
 /** Returns a path to a file the reader can open: the original, or a cached conversion. */
-export async function readableFile(book: BookRow, info: FormatInfo): Promise<{ file: string; format: string }> {
-  if (!info.convertTo) return { file: book.path, format: info.format }
-  const out = path.join(paths.cache, `${book.id}-${book.mtime}.${info.convertTo}`)
+export async function readableFile(book: BookRow, info: FormatInfo, src: SourceFile): Promise<{ file: string; format: string }> {
+  if (!info.convertTo) return { file: src.path, format: info.format }
+  const out = path.join(paths.cache, `${book.id}-f${src.id}-${src.mtime}.${info.convertTo}`)
   try {
     await fs.access(out)
     return { file: out, format: info.convertTo }
   } catch { /* convert below */ }
   let job = inflight.get(out)
   if (!job) {
-    job = convert(book, info, out).finally(() => inflight.delete(out))
+    job = convert(book, info, src, out).finally(() => inflight.delete(out))
     inflight.set(out, job)
   }
   return { file: await job, format: info.convertTo }
 }
 
-async function convert(book: BookRow, info: FormatInfo, out: string): Promise<string> {
-  // drop stale conversions of this book
-  for (const f of await fs.readdir(paths.cache)) if (f.startsWith(`${book.id}-`)) await fs.rm(path.join(paths.cache, f), { force: true })
+async function convert(book: BookRow, info: FormatInfo, src: SourceFile, out: string): Promise<string> {
+  // drop stale conversions of this file (and ones from before files were tracked separately)
+  for (const f of await fs.readdir(paths.cache)) {
+    if (f.startsWith(`${book.id}-f${src.id}-`) || new RegExp(`^${book.id}-\\d+\\.`).test(f)) await fs.rm(path.join(paths.cache, f), { force: true })
+  }
   const tmp = out + '.tmp'
   if (info.needsCalibre) {
-    await run(config.calibreConvert, [book.path, tmp.replace(/\.tmp$/, '.tmp.epub')], { timeout: 10 * 60_000 })
+    await run(config.calibreConvert, [src.path, tmp.replace(/\.tmp$/, '.tmp.epub')], { timeout: 10 * 60_000 })
     await fs.rename(tmp.replace(/\.tmp$/, '.tmp.epub'), out)
     return out
   }
   let data: Uint8Array
-  if (info.format === 'cbr') data = await cbrToCbz(book.path)
-  else data = await textToEpub(book, info.format)
+  if (info.format === 'cbr') data = await cbrToCbz(src.path)
+  else data = await textToEpub(book, src.path, info.format)
   await fs.writeFile(tmp, data)
   await fs.rename(tmp, out)
   return out
@@ -109,8 +113,8 @@ function splitText(text: string, markdown: boolean): Chapter[] {
   return chapters.length ? chapters : [{ title: 'Text', body: '<p></p>' }]
 }
 
-async function textToEpub(book: BookRow, format: string): Promise<Uint8Array> {
-  const raw = decodeText(await fs.readFile(book.path))
+async function textToEpub(book: BookRow, file: string, format: string): Promise<Uint8Array> {
+  const raw = decodeText(await fs.readFile(file))
   const title = esc(book.title)
   const lang = book.language ?? 'en'
   let chapters: Chapter[]

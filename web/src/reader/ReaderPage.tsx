@@ -1,9 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, List, Bookmark, BookmarkCheck, Search, Type, Maximize, Minimize, ChevronLeft, ChevronRight, Copy, StickyNote, Trash2 } from 'lucide-react'
 import { api, authedUrl, getToken, serverUrl, type Annotation, type BookDetail } from '../api'
 import { useSession } from '../session'
+import { useBackHandler } from '../nativeBack'
 import { Spinner } from '../components/ui'
 import { loadPrefs, savePrefs, themes, type ReaderPrefs } from './prefs'
 import { ReaderSettingsForm } from './ReaderSettings'
@@ -16,21 +17,30 @@ const PdfEngine = lazy(() => import('./PdfEngine'))
 
 type Panel = null | 'toc' | 'notes' | 'search' | 'settings'
 
-async function fetchContent(id: string): Promise<{ blob: Blob; format: string }> {
-  const res = await fetch(`${serverUrl()}/api/books/${id}/content`, { headers: { Authorization: `Bearer ${getToken()}` } })
+/** `file` picks a version; without it the server resumes the version this reader used last (else the primary). */
+async function fetchContent(id: string, file: string | null): Promise<{ blob: Blob; format: string; fileId: number | null }> {
+  const res = await fetch(`${serverUrl()}/api/books/${id}/content${file ? `?file=${encodeURIComponent(file)}` : ''}`, { headers: { Authorization: `Bearer ${getToken()}` } })
   if (!res.ok) throw new Error(res.status === 415 ? 'This format cannot be read in the browser — download it instead.' : `Could not load book (${res.status})`)
-  return { blob: await res.blob(), format: res.headers.get('X-Book-Format') ?? 'epub' }
+  return { blob: await res.blob(), format: res.headers.get('X-Book-Format') ?? 'epub', fileId: Number(res.headers.get('X-Book-File')) || null }
 }
 
 export default function ReaderPage() {
   const { id = '' } = useParams()
+  const [params] = useSearchParams()
+  const fileParam = params.get('file')
   const nav = useNavigate()
   const qc = useQueryClient()
   const { user, setUser } = useSession()
 
   const book = useQuery({ queryKey: ['book', id], queryFn: () => api<BookDetail>(`/api/books/${id}`), staleTime: 0 })
-  const content = useQuery({ queryKey: ['content', id], queryFn: () => fetchContent(id), staleTime: Infinity, gcTime: 60_000, retry: 0 })
-  const notesQ = useQuery({ queryKey: ['annotations', id], queryFn: () => api<Annotation[]>(`/api/books/${id}/annotations`) })
+  const content = useQuery({ queryKey: ['content', id, fileParam], queryFn: () => fetchContent(id, fileParam), staleTime: Infinity, gcTime: 60_000, retry: 0 })
+  // the version actually being read (known once the content arrives)
+  const fileId = content.data?.fileId ?? null
+  const notesQ = useQuery({
+    queryKey: ['annotations', id, fileId],
+    queryFn: () => api<Annotation[]>(`/api/books/${id}/annotations${fileId ? `?file=${fileId}` : ''}`),
+    enabled: !!content.data,
+  })
 
   const [prefs, setPrefs] = useState<ReaderPrefs>(() => loadPrefs(user?.prefs?.reader))
   const [engine, setEngine] = useState<EngineHandle | null>(null)
@@ -64,7 +74,7 @@ export default function ReaderPage() {
   }, [prefs.bookMode, prefs.columns, stage.w, stage.h])
 
   const notes = notesQ.data ?? []
-  const setNotes = (fn: (a: Annotation[]) => Annotation[]) => qc.setQueryData(['annotations', id], (old: Annotation[] | undefined) => fn(old ?? []))
+  const setNotes = (fn: (a: Annotation[]) => Annotation[]) => qc.setQueryData(['annotations', id, fileId], (old: Annotation[] | undefined) => fn(old ?? []))
 
   // ---- progress sync -------------------------------------------------------
   const pending = useRef<Position | null>(null)
@@ -72,8 +82,8 @@ export default function ReaderPage() {
     const p = pending.current
     if (!p) return
     pending.current = null
-    void api(`/api/books/${id}/progress`, { method: 'PUT', body: { locator: p.locator, fraction: p.fraction }, keepalive }).catch(() => {})
-  }, [id])
+    void api(`/api/books/${id}/progress`, { method: 'PUT', body: { locator: p.locator, fraction: p.fraction, fileId }, keepalive }).catch(() => {})
+  }, [id, fileId])
   useEffect(() => {
     const t = setInterval(() => flush(), 4000)
     const onHide = () => { if (document.visibilityState === 'hidden') flush(true) }
@@ -131,6 +141,8 @@ export default function ReaderPage() {
     if (panel) { setPanel(null); return true }
     return false
   }
+  // Android back: close a panel or selection first, then leave the reader
+  useBackHandler(dismiss)
   const onTap = (x: number) => {
     if (dismiss()) return
     if (chrome) { setChrome(false); return }
@@ -167,16 +179,16 @@ export default function ReaderPage() {
       await api(`/api/annotations/${bookmarkHere.id}`, { method: 'DELETE' })
       setNotes(ns => ns.filter(n => n.id !== bookmarkHere.id))
     } else {
-      const a = { kind: 'bookmark' as const, locator: pos.locator, chapter: pos.chapter ?? pos.label ?? null, text: null, note: null, color: null }
+      const a = { kind: 'bookmark' as const, locator: pos.locator, chapter: pos.chapter ?? pos.label ?? null, text: null, note: null, color: null, fraction: pos.fraction, fileId }
       const r = await api<{ id: number }>(`/api/books/${id}/annotations`, { body: a })
-      setNotes(ns => [...ns, { ...a, id: r.id, createdAt: Date.now() }])
+      setNotes(ns => [...ns, { ...a, id: r.id, createdAt: Date.now(), native: true }])
     }
   }
   const highlight = async (color: string, note?: string) => {
     if (!selection) return
-    const a = { kind: 'highlight' as const, locator: selection.locator, text: selection.text, note: note ?? null, color, chapter: pos?.chapter ?? null }
+    const a = { kind: 'highlight' as const, locator: selection.locator, text: selection.text, note: note ?? null, color, chapter: pos?.chapter ?? null, fraction: pos?.fraction ?? null, fileId }
     const r = await api<{ id: number }>(`/api/books/${id}/annotations`, { body: a })
-    const full = { ...a, id: r.id, createdAt: Date.now() }
+    const full = { ...a, id: r.id, createdAt: Date.now(), native: true }
     setNotes(ns => [...ns, full])
     engine?.addHighlight?.(full)
     engine?.clearSelection?.()
@@ -197,14 +209,53 @@ export default function ReaderPage() {
   }
 
   const go = (loc: string) => { engine?.goTo(loc); setPanel(null); setChrome(false) }
+  /** a note from another version that isn't pinned down here yet: go to about the same place */
+  const goNote = (a: Annotation) => {
+    if (a.locator) go(a.locator)
+    else if (a.fraction != null) { engine?.goToFraction(a.fraction); setPanel(null); setChrome(false) }
+  }
+
+  // ---- notes made in another version of this book: find them here by their text, remember where
+  const anchoring = useRef(false)
+  useEffect(() => {
+    const find = engine?.findText
+    if (!find || !fileId || anchoring.current) return
+    const todo = notes.filter(n => n.kind === 'highlight' && !n.locator && !n.unanchored && n.text)
+    if (!todo.length) return
+    anchoring.current = true
+    void (async () => {
+      for (const a of todo) {
+        let loc: string | null = null
+        try { loc = await find(a.text!, a.fraction) } catch { /* not found */ }
+        await api(`/api/annotations/${a.id}/anchor`, { method: 'PUT', body: { fileId, locator: loc } }).catch(() => {})
+        setNotes(ns => ns.map(n => (n.id === a.id ? { ...n, locator: loc, unanchored: !loc } : n)))
+        if (loc) engine.addHighlight?.({ ...a, locator: loc })
+      }
+      anchoring.current = false
+    })()
+  }, [engine, notes, fileId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // a position saved in another version doesn't apply here: open at the same point in the book instead
+  const resumeFraction = useRef(false)
+  const onReady = (h: EngineHandle, t: TocItem[]) => {
+    setEngine(h)
+    setToc(t)
+    const b = book.data
+    if (b && !b.finished && b.locatorFileId !== fileId && b.progress > 0 && !resumeFraction.current) {
+      resumeFraction.current = true
+      h.goToFraction(b.progress)
+    }
+  }
 
   // ---- render ---------------------------------------------------------------
   const theme = themes[prefs.theme]
   const b = book.data
-  const kind = b?.engine === 'pdf' ? 'pdf' : b?.comic ? 'comic' : 'reflow'
-  const Engine = b?.engine === 'pdf' ? PdfEngine : FoliateEngine
+  // engine follows the version being read, not the book's primary format
+  const fmt = content.data?.format
+  const kind = fmt === 'pdf' ? 'pdf' : fmt === 'cbz' ? 'comic' : 'reflow'
+  const Engine = fmt === 'pdf' ? PdfEngine : FoliateEngine
   const shownFraction = scrub ?? pos?.fraction ?? 0
-  const highlightsForEngine = useMemo(() => notes.filter(n => n.kind === 'highlight'), [notes])
+  const highlightsForEngine = useMemo(() => notes.filter(n => n.kind === 'highlight' && n.locator), [notes])
 
   const fail = error || (content.error as Error | null)?.message || (book.error as Error | null)?.message
   return (
@@ -215,7 +266,7 @@ export default function ReaderPage() {
             <p>{fail}</p>
             <div className="row" style={{ justifyContent: 'center' }}>
               <button className="btn" onClick={() => nav(-1)}>Back</button>
-              <a className="btn primary" href={authedUrl(`/api/books/${id}/file`)} download>Download file</a>
+              <a className="btn primary" href={authedUrl(`/api/books/${id}/file`, { file: fileParam })} download>Download file</a>
             </div>
           </div>
         </div>
@@ -245,9 +296,9 @@ export default function ReaderPage() {
                     data={content.data.blob}
                     format={content.data.format}
                     prefs={prefs}
-                    initialLocator={b.finished ? null : b.locator}
+                    initialLocator={b.finished || b.locatorFileId !== fileId ? null : b.locator}
                     annotations={highlightsForEngine}
-                    onReady={(h, t) => { setEngine(h); setToc(t) }}
+                    onReady={onReady}
                     onRelocate={onRelocate}
                     onTap={onTap}
                     onSelection={s => { setSelection(s); setActiveNote(null) }}
@@ -271,9 +322,9 @@ export default function ReaderPage() {
             data={content.data.blob}
             format={content.data.format}
             prefs={prefs}
-            initialLocator={b.finished ? null : b.locator}
+            initialLocator={b.finished || b.locatorFileId !== fileId ? null : b.locator}
             annotations={highlightsForEngine}
-            onReady={(h, t) => { setEngine(h); setToc(t) }}
+            onReady={onReady}
             onRelocate={onRelocate}
             onTap={onTap}
             onSelection={s => { setSelection(s); setActiveNote(null) }}
@@ -371,7 +422,7 @@ export default function ReaderPage() {
             <button onClick={() => setPanel('toc')}>Chapters</button>
             <button className="active">Bookmarks & highlights ({notes.length})</button>
           </div>
-          <NotesList items={notes} onPick={a => go(a.locator)} onDelete={a => void deleteNote(a)} />
+          <NotesList items={notes} onPick={goNote} onDelete={a => void deleteNote(a)} />
         </Sheet>
       )}
       {panel === 'search' && engine && <Sheet title="Search" onClose={() => setPanel(null)}><SearchPanel engine={engine} onPick={go} /></Sheet>}
