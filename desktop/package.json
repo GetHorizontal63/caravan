@@ -1,6 +1,6 @@
 {
   "name": "caravan-desktop",
-  "version": "0.1.0",
+  "version": "1.0.1",
   "description": "Caravan desktop client",
   "main": "main.js",
   "private": true,

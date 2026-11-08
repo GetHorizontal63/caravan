@@ -281,8 +281,14 @@ export default function FoliateEngine(props: EngineProps) {
             cb.current.onSelection({ locator: view.getCFI(index, range), text, x: (fr?.left ?? 0) + rect.left + rect.width / 2, y: (fr?.top ?? 0) + rect.top })
           }, 30)
           doc.addEventListener('pointerup', checkSelection)
-          doc.addEventListener('touchend', checkSelection)
-          doc.addEventListener('selectionchange', () => { if (doc.getSelection()?.isCollapsed) cb.current.onSelection(null) })
+          // Touch: the page-curl handlers above swallow touchend, and on Android a long-press selection (and dragging
+          // its handles) ends without one anyway. So follow the selection itself and show the popover once it settles.
+          let settle: ReturnType<typeof setTimeout> | undefined
+          doc.addEventListener('selectionchange', () => {
+            clearTimeout(settle)
+            if (doc.getSelection()?.isCollapsed) { cb.current.onSelection(null); return }
+            settle = setTimeout(checkSelection, 350)
+          })
         })
 
         view.addEventListener('show-annotation', (e: CustomEvent) => cb.current.onAnnotationClick(e.detail.value))

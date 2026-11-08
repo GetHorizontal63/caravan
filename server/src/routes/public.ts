@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { db, getSettings, now, saveSettings } from '../db.ts'
 import { createSession, deleteSession, hashPassword, publicUser, requireUser, tokenFrom, userCount, verifyPassword, type User } from '../auth.ts'
 
-export const VERSION = '0.1.0'
+export const VERSION = '1.0.1'
 
 export default async function publicRoutes(app: FastifyInstance) {
   app.get('/api/system/info', async () => ({

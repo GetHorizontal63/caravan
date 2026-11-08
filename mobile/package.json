@@ -1,6 +1,6 @@
 {
   "name": "satchel",
-  "version": "0.1.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Satchel: the Android app for Caravan (Capacitor shell around the web client)",
   "scripts": {
