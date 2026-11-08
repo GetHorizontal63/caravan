@@ -1,6 +1,7 @@
 import { db, now } from './db.ts'
 import { safeJson } from './auth.ts'
 import { formatOf } from './formats.ts'
+import { coverColor } from './folderArt.ts'
 
 export interface BookRow {
   id: number
@@ -23,6 +24,10 @@ export interface BookRow {
   series_index: number | null
   cover: string | null
   cover_source: string | null
+  cover_sig: string | null
+  cover_color: string | null
+  spine: string | null
+  spine_sig: string | null
   provider_ids: string
   metadata_source: string
   metadata_locked: number
@@ -105,6 +110,10 @@ export function summarize(b: BookRow & Partial<UserBookRow> & { authors?: string
     format: b.format,
     hasCover: !!b.cover,
     coverVersion: b.cover ? b.cover.replace(/\.jpg$/, '') : null,
+    coverColor: coverColor(b.cover, b.cover_color),
+    hasSpine: !!b.spine,
+    spineVersion: b.spine ? b.spine.replace(/\.jpg$/, '') : null,
+    pageCount: b.page_count,
     progress: b.fraction ?? 0,
     finished: !!b.finished,
     favorite: !!b.favorite,

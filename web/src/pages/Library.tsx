@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Upload, RefreshCw, Layers, Plus } from 'lucide-react'
+import { Upload, RefreshCw, Layers, Plus, LayoutGrid, LibraryBig } from 'lucide-react'
 import { api, authedUrl, type Collection, type Library, type SeriesSummary } from '../api'
 import { BookGrid, hue, SkeletonCards } from '../components/books'
+import { Bookshelf } from '../components/Bookshelf'
 import { CollectionCard } from './Collection'
 import { NewSeriesDialog } from './Series'
 import { CollectionEditDialog } from '../components/GroupDialogs'
@@ -17,9 +18,18 @@ export const SORTS = [
 ] as const
 export const STATUSES = [['', 'All'], ['unread', 'Unread'], ['reading', 'Reading'], ['finished', 'Finished'], ['favorite', 'Favorites']] as const
 
-export function Filters({ params, set }: { params: URLSearchParams; set(k: string, v: string): void }) {
+const LAYOUT_KEY = 'caravan.layout'
+const savedLayout = () => { try { return localStorage.getItem(LAYOUT_KEY) === 'shelf' ? 'shelf' : 'grid' } catch { return 'grid' } }
+
+export function Filters({ params, set, layout, setLayout }: { params: URLSearchParams; set(k: string, v: string): void; layout?: 'grid' | 'shelf'; setLayout?(l: 'grid' | 'shelf'): void }) {
   return (
     <div className="toolbar">
+      {layout && setLayout && (
+        <div className="layout-toggle" role="radiogroup" aria-label="Layout">
+          <button role="radio" aria-checked={layout === 'grid'} className={layout === 'grid' ? 'on' : ''} onClick={() => setLayout('grid')} title="Covers"><LayoutGrid size={17} /></button>
+          <button role="radio" aria-checked={layout === 'shelf'} className={layout === 'shelf' ? 'on' : ''} onClick={() => setLayout('shelf')} title="Bookshelf (spines)"><LibraryBig size={17} /></button>
+        </div>
+      )}
       <Select label="Sort by" value={params.get('sort') ?? 'title'} onChange={v => set('sort', v)} prefix="Sort:" options={SORTS.map(([value, label]) => ({ value, label }))} />
       <div className="chips">
         {STATUSES.map(([v, l]) => (
@@ -39,6 +49,8 @@ export default function LibraryPage() {
   const lib = libs.data?.find(l => String(l.id) === id)
   const view = params.get('view') ?? 'books'
   const set = (k: string, v: string) => setParams(p => { v ? p.set(k, v) : p.delete(k); return p }, { replace: true })
+  const layout = (params.get('layout') as 'grid' | 'shelf' | null) ?? savedLayout()
+  const setLayout = (l: 'grid' | 'shelf') => { try { localStorage.setItem(LAYOUT_KEY, l) } catch { /* private mode */ } set('layout', l) }
 
   const fileInput = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -84,8 +96,10 @@ export default function LibraryPage() {
       </div>
       {view === 'books' && (
         <>
-          <Filters params={params} set={set} />
-          <BookGrid params={{ library: id, sort: params.get('sort') ?? 'title', status: params.get('status') ?? undefined }} />
+          <Filters params={params} set={set} layout={layout} setLayout={setLayout} />
+          {layout === 'shelf'
+            ? <Bookshelf comic={lib.kind === 'comics'} params={{ library: id, sort: params.get('sort') ?? 'title', status: params.get('status') ?? undefined }} />
+            : <BookGrid params={{ library: id, sort: params.get('sort') ?? 'title', status: params.get('status') ?? undefined }} />}
         </>
       )}
       {view === 'authors' && <AuthorList />}

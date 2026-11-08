@@ -40,9 +40,9 @@ export default async function adminRoutes(app: FastifyInstance) {
   })
 
   app.delete<{ Params: { id: string } }>('/api/libraries/:id', async req => {
-    const covers = db.prepare('SELECT cover FROM books WHERE library_id = ?').all(Number(req.params.id)) as { cover: string | null }[]
+    const covers = db.prepare('SELECT cover, spine FROM books WHERE library_id = ?').all(Number(req.params.id)) as { cover: string | null; spine: string | null }[]
     db.prepare('DELETE FROM libraries WHERE id = ?').run(Number(req.params.id))
-    for (const c of covers) await deleteCover(c.cover)
+    for (const c of covers) { await deleteCover(c.cover); await deleteCover(c.spine) }
     return { ok: true }
   })
 
@@ -135,6 +135,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     if (b) {
       db.prepare('DELETE FROM books WHERE id = ?').run(b.id)
       await deleteCover(b.cover)
+      await deleteCover(b.spine)
     }
     return { ok: true }
   })

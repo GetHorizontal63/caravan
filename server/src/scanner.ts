@@ -8,6 +8,7 @@ import { setAuthors, setTags, sortTitle, type BookRow } from './books.ts'
 import { storeCover } from './covers.ts'
 import { metadataQueue } from './metadata/index.ts'
 import { safeJson } from './auth.ts'
+import { ART_DIR, syncFolderArt } from './folderArt.ts'
 
 export interface LibraryRow {
   id: number
@@ -50,7 +51,7 @@ async function walk(root: string, out: string[]) {
   for (const e of entries) {
     const full = path.join(root, e.name)
     if (e.isDirectory()) {
-      if (!SKIP_DIRS.test(e.name)) await walk(full, out)
+      if (!SKIP_DIRS.test(e.name) && !ART_DIR.test(e.name)) await walk(full, out)
     } else if (e.isFile() && !e.name.startsWith('._') && formatOf(e.name)) {
       out.push(full)
     }
@@ -160,6 +161,9 @@ export async function scanLibrary(libraryId: number) {
     for (const b of gone) db.prepare('UPDATE books SET missing = 1 WHERE id = ?').run(b.id)
     // Books also removed from the library's folder list entirely
     for (const b of known.values()) if (!roots.some(r => under(b.path, r))) db.prepare('DELETE FROM books WHERE id = ?').run(b.id)
+
+    // covers/ and spines/ folders next to the books (before identification, so folder covers aren't downloaded over)
+    await syncFolderArt(libraryId, lib.kind, dir => { scanState.current = `Artwork: ${dir}` })
 
     db.prepare('UPDATE libraries SET last_scan = ? WHERE id = ?').run(now(), libraryId)
     metadataQueue.push(...toIdentify)

@@ -55,7 +55,7 @@ const migrations: string[] = [
     series TEXT,
     series_index REAL,
     cover TEXT,                 -- file name inside data/covers
-    cover_source TEXT,          -- embedded | openlibrary | googlebooks | upload | generated
+    cover_source TEXT,          -- embedded | openlibrary | googlebooks | upload | generated (| folder, migration 3)
     provider_ids TEXT NOT NULL DEFAULT '{}',
     metadata_source TEXT NOT NULL DEFAULT 'file', -- file | openlibrary | googlebooks | manual
     metadata_locked INTEGER NOT NULL DEFAULT 0,
@@ -134,6 +134,13 @@ const migrations: string[] = [
   // the product was renamed JellyReader -> Caravan; carry stored server names over ("JellyReader (test)" -> "Caravan (test)")
   `
   UPDATE settings SET value = replace(value, 'JellyReader', 'Caravan') WHERE key = 'serverName';
+  `,
+  // art from the book's own covers/ and spines/ folders (see folderArt.ts)
+  `
+  ALTER TABLE books ADD COLUMN cover_sig TEXT;
+  ALTER TABLE books ADD COLUMN cover_color TEXT;
+  ALTER TABLE books ADD COLUMN spine TEXT;
+  ALTER TABLE books ADD COLUMN spine_sig TEXT;
   `,
 ]
 

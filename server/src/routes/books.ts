@@ -43,9 +43,11 @@ export function queryBooks(userId: number, q: Q) {
     case 'finished': where.push('ub.finished = 1'); break
     case 'favorite': where.push('ub.favorite = 1'); break
   }
-  const order = q.sort === 'collection' && q.collection
+  let order = q.sort === 'collection' && q.collection
     ? '(SELECT cb.position FROM collection_books cb WHERE cb.book_id = b.id AND cb.collection_id = :collection)'
     : SORTS[q.sort ?? 'title'] ?? SORTS.title
+  // bookshelf: every series together (series A-Z, in reading order), then everything else in the chosen order
+  if (q.group === 'series') order = `b.series IS NULL, b.series COLLATE NOCASE, b.series_index IS NULL, b.series_index, ${order}`
   const limit = Math.min(Number(q.limit) || 60, 500)
   const offset = Number(q.offset) || 0
   const base = BOOK_SELECT + ` WHERE ${where.join(' AND ')}`
@@ -113,6 +115,14 @@ export default async function bookRoutes(app: FastifyInstance) {
     if (!b.cover) return reply.code(404).send({ error: 'No cover' })
     reply.header('Cache-Control', 'private, max-age=31536000, immutable').type('image/jpeg')
     return reply.send(fs.createReadStream(coverPath(b.cover)))
+  })
+
+  app.get<{ Params: { id: string } }>('/api/books/:id/spine', async (req, reply) => {
+    const b = requireBook(req.params.id, reply)
+    if (!b) return
+    if (!b.spine) return reply.code(404).send({ error: 'No spine image' })
+    reply.header('Cache-Control', 'private, max-age=31536000, immutable').type('image/jpeg')
+    return reply.send(fs.createReadStream(coverPath(b.spine)))
   })
 
   /** Original file, as a download. */

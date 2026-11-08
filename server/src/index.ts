@@ -16,7 +16,20 @@ import seriesRoutes from './routes/series.ts'
 import { startScheduler, scanAll } from './scanner.ts'
 
 const app = Fastify({
-  logger: { level: process.env.CARAVAN_LOG_LEVEL ?? process.env.JR_LOG_LEVEL ?? 'info', transport: undefined },
+  logger: {
+    level: process.env.CARAVAN_LOG_LEVEL ?? process.env.JR_LOG_LEVEL ?? 'info',
+    transport: undefined,
+    serializers: {
+      // covers/downloads carry the session token as ?api_key= (img tags can't send headers); keep it out of the logs
+      req: (req: { method: string; url: string; host?: string; ip?: string; socket?: { remotePort?: number } }) => ({
+        method: req.method,
+        url: req.url.replace(/([?&](?:api_key|token)=)[^&]*/gi, '$1[redacted]'),
+        host: req.host,
+        remoteAddress: req.ip,
+        remotePort: req.socket?.remotePort,
+      }),
+    },
+  },
   bodyLimit: 10 * 1024 * 1024,
   trustProxy: true,
 })

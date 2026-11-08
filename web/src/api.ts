@@ -63,6 +63,9 @@ export function authedUrl(path: string, params: Record<string, string | number |
   return `${serverUrl()}${path}?${q}`
 }
 
+export const spineUrl = (b: { id: number; spineVersion?: string | null; hasSpine?: boolean }) =>
+  b.hasSpine ? authedUrl(`/api/books/${b.id}/spine`, { v: b.spineVersion }) : undefined
+
 export const coverUrl = (b: { id: number; coverVersion?: string | null; hasCover?: boolean }) =>
   b.hasCover === false ? undefined : authedUrl(`/api/books/${b.id}/cover`, { v: b.coverVersion })
 
@@ -78,6 +81,11 @@ export interface BookSummary {
   format: string
   hasCover: boolean
   coverVersion: string | null
+  /** dominant cover colour (#rrggbb), for generated spines */
+  coverColor: string | null
+  hasSpine: boolean
+  spineVersion: string | null
+  pageCount: number | null
   progress: number
   finished: boolean
   favorite: boolean

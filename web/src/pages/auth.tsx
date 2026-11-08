@@ -49,9 +49,18 @@ export function ConnectForm({ unreachable }: { unreachable?: boolean }) {
     let u = url.trim().replace(/\/+$/, '')
     if (!/^https?:\/\//.test(u)) u = 'http://' + u
     if (!/:\d+$/.test(new URL(u).host) && !u.startsWith('https')) u += ':8420'
-    const res = await fetch(u + '/api/system/info', { signal: AbortSignal.timeout(8000) }).catch(() => null)
-    const info = res?.ok ? await res.json().catch(() => null) : null
-    if (!isCaravanServer(info)) throw new Error('No Caravan server found at that address')
+    let res: Response
+    try {
+      res = await fetch(u + '/api/system/info', { signal: AbortSignal.timeout(15000) })
+    } catch (err) {
+      const e = err as Error
+      throw new Error(e.name === 'TimeoutError'
+        ? `No answer from ${u} after 15 s. Is Tailscale/VPN on, and is ${APP_NAME} allowed through it?`
+        : `Couldn't connect to ${u} (${e.message || e.name}). Check the address, port and network.`)
+    }
+    if (!res.ok) throw new Error(`${u} answered with HTTP ${res.status}, so it isn't a Caravan server (wrong port?)`)
+    const info = await res.json().catch(() => null)
+    if (!isCaravanServer(info)) throw new Error(`${u} is reachable but isn't a Caravan server (wrong port?)`)
     setServerUrl(u)
     await refresh()
   })
