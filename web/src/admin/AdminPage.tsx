@@ -248,7 +248,7 @@ function Users() {
 
 // ---- server settings ------------------------------------------------------------
 
-interface Settings { serverName: string; googleBooksApiKey: string; autoFetchMetadata: boolean; scanIntervalHours: number; providers: string[]; supportedExtensions: string[] }
+interface Settings { serverName: string; googleBooksApiKey: string; merriamWebsterApiKey: string; autoFetchMetadata: boolean; scanIntervalHours: number; providers: string[]; supportedExtensions: string[] }
 
 function ServerSettings() {
   const q = useQuery({ queryKey: ['settings'], queryFn: () => api<Settings>('/api/settings') })
@@ -257,7 +257,7 @@ function ServerSettings() {
   const { refresh } = useSession()
   if (!s) return <Spinner />
   const save = async () => {
-    await api('/api/settings', { method: 'PUT', body: { serverName: s.serverName, googleBooksApiKey: s.googleBooksApiKey, autoFetchMetadata: s.autoFetchMetadata, scanIntervalHours: s.scanIntervalHours, providers: s.providers } })
+    await api('/api/settings', { method: 'PUT', body: { serverName: s.serverName, googleBooksApiKey: s.googleBooksApiKey, merriamWebsterApiKey: s.merriamWebsterApiKey, autoFetchMetadata: s.autoFetchMetadata, scanIntervalHours: s.scanIntervalHours, providers: s.providers } })
     toast('Settings saved')
     void refresh()
   }
@@ -277,6 +277,10 @@ function ServerSettings() {
       <label className="field"><span>Google Books API key</span>
         <input className="input" value={s.googleBooksApiKey} onChange={e => setS({ ...s, googleBooksApiKey: e.target.value })} placeholder="Recommended — without a key Google shares a tiny anonymous quota" />
         <span className="small faint">Free from Google Cloud Console → APIs &amp; Services → enable “Books API” → Credentials → API key.</span>
+      </label>
+      <label className="field"><span>Merriam-Webster dictionary key</span>
+        <input className="input" value={s.merriamWebsterApiKey ?? ''} onChange={e => setS({ ...s, merriamWebsterApiKey: e.target.value })} placeholder="Turns on “Define” for selected words in the reader" />
+        <span className="small faint">Free at dictionaryapi.com → Register → request a key for the <b>Collegiate Dictionary</b> (1,000 look-ups a day; Caravan caches every word for 30 days).</span>
       </label>
       <label className="field"><span>Rescan libraries every (hours, 0 = never)</span>
         <input className="input" type="number" min={0} style={{ width: 120 }} value={s.scanIntervalHours} onChange={e => setS({ ...s, scanIntervalHours: Number(e.target.value) })} />

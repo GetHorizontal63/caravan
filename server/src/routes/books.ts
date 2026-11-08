@@ -7,6 +7,7 @@ import { BOOK_SELECT, detail, fileOf, getBook, summarize, type BookRow } from '.
 import { coverPath } from '../covers.ts'
 import { formatOf } from '../formats.ts'
 import { readableFile } from '../convert.ts'
+import { define, DictionaryError } from '../dictionary.ts'
 
 type Q = Record<string, string | undefined>
 
@@ -187,6 +188,18 @@ export default async function bookRoutes(app: FastifyInstance) {
     if (typeof req.body?.favorite === 'boolean') patch.favorite = req.body.favorite ? 1 : 0
     upsertUserBook(req.user!.id, b.id, patch)
     return detail(b, req.user!.id)
+  })
+
+  // ---- dictionary ------------------------------------------------------------
+
+  /** Merriam-Webster definition, pronunciation and part of speech for a selected word. */
+  app.get<{ Querystring: { word?: string } }>('/api/define', async (req, reply) => {
+    try {
+      return await define(req.query.word ?? '')
+    } catch (e) {
+      if (e instanceof DictionaryError) return reply.code(e.status).send({ error: e.message })
+      throw e
+    }
   })
 
   // ---- annotations (highlights + bookmarks) --------------------------------

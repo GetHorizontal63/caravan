@@ -209,7 +209,8 @@ export default function FoliateEngine(props: EngineProps) {
             chapterHref: d.tocItem?.href,
             label: fxl
               ? `Page ${(d.section?.current ?? 0) + 1} of ${d.section?.total ?? '?'}`
-              : d.pageItem?.label ? `Page ${d.pageItem.label}` : loc ? `${loc.current + 1} of ${loc.total}` : undefined,
+              // some books label their print pages "page252" or "Page 252" themselves
+              : d.pageItem?.label ? `Page ${String(d.pageItem.label).trim().replace(/^page\s*/i, '')}` : loc ? `${loc.current + 1} of ${loc.total}` : undefined,
             minutesLeftInChapter: !fxl && d.time?.section != null ? Math.round(d.time.section) : undefined,
           })
           if (!s.committing && s.prev) sync()

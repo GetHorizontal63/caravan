@@ -209,6 +209,26 @@ export interface Collection {
   contains?: boolean
 }
 
+export interface DictionaryEntry {
+  id: string
+  /** with syllable breaks, e.g. "plan·et" */
+  headword: string
+  homograph: number | null
+  partOfSpeech: string | null
+  /** Merriam-Webster respelling ("ˈdün") and a recording when there is one */
+  pronunciations: { written: string; audio: string | null }[]
+  definitions: string[]
+  inflections: string[]
+  offensive: boolean
+}
+
+export interface Definition {
+  word: string
+  entries: DictionaryEntry[]
+  suggestions: string[]
+  url: string
+}
+
 export interface SeriesSummary {
   name: string
   count: number

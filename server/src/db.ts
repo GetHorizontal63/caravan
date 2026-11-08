@@ -173,6 +173,14 @@ const migrations: string[] = [
     PRIMARY KEY (annotation_id, file_id)
   );
   `,
+  // Merriam-Webster look-ups, cached (the free key allows 1,000 a day)
+  `
+  CREATE TABLE dictionary_cache (
+    word TEXT PRIMARY KEY,
+    json TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL
+  );
+  `,
 ]
 
 const current = (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
@@ -207,6 +215,8 @@ export function tx<T>(fn: () => T): T {
 export interface ServerSettings {
   serverName: string
   googleBooksApiKey: string
+  /** Merriam-Webster Collegiate Dictionary key (dictionaryapi.com), for word look-ups in the reader */
+  merriamWebsterApiKey: string
   autoFetchMetadata: boolean
   scanIntervalHours: number
   providers: string[] // order of preference
@@ -215,6 +225,7 @@ export interface ServerSettings {
 const defaults: ServerSettings = {
   serverName: 'Caravan',
   googleBooksApiKey: '',
+  merriamWebsterApiKey: '',
   autoFetchMetadata: true,
   scanIntervalHours: 6,
   providers: ['openlibrary', 'googlebooks'],

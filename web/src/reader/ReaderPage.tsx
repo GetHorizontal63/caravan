@@ -1,7 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, List, Bookmark, BookmarkCheck, Search, Type, Maximize, Minimize, ChevronLeft, ChevronRight, Copy, StickyNote, Trash2 } from 'lucide-react'
+import { ArrowLeft, List, Bookmark, BookmarkCheck, Search, Type, Maximize, Minimize, ChevronLeft, ChevronRight, Copy, StickyNote, Trash2, BookA } from 'lucide-react'
+import { DefineDialog, isDefinable } from '../components/DefineDialog'
 import { api, authedUrl, getToken, serverUrl, type Annotation, type BookDetail } from '../api'
 import { useSession } from '../session'
 import { useBackHandler } from '../nativeBack'
@@ -53,6 +54,8 @@ export default function ReaderPage() {
   const [error, setError] = useState('')
   const [fullscreen, setFullscreen] = useState(!!document.fullscreenElement)
   const [scrub, setScrub] = useState<number | null>(null)
+  /** word being looked up in the dictionary */
+  const [defining, setDefining] = useState<string | null>(null)
 
   // ---- book-on-desk geometry: 5×7 pages, two side by side when there's room
   const stageRef = useRef<HTMLDivElement>(null)
@@ -137,6 +140,7 @@ export default function ReaderPage() {
 
   // ---- input ---------------------------------------------------------------
   const dismiss = () => {
+    if (defining) { setDefining(null); return true }
     if (selection || activeNote) { setSelection(null); setActiveNote(null); engine?.clearSelection?.(); return true }
     if (panel) { setPanel(null); return true }
     return false
@@ -241,7 +245,8 @@ export default function ReaderPage() {
     setEngine(h)
     setToc(t)
     const b = book.data
-    if (b && !b.finished && b.locatorFileId !== fileId && b.progress > 0 && !resumeFraction.current) {
+    // (also when only a percentage was saved, e.g. by an older client or another app)
+    if (b && !b.finished && (b.locatorFileId !== fileId || !b.locator) && b.progress > 0 && !resumeFraction.current) {
       resumeFraction.current = true
       h.goToFraction(b.progress)
     }
@@ -397,8 +402,12 @@ export default function ReaderPage() {
           {HIGHLIGHT_COLORS.map(c => <button key={c} className="dot" style={{ background: c }} onClick={() => void highlight(c)} aria-label="Highlight" />)}
           <button className="icon-btn" onClick={() => { const n = prompt('Add a note'); if (n !== null) void highlight(HIGHLIGHT_COLORS[0], n) }} aria-label="Highlight with note"><StickyNote size={18} /></button>
           <button className="icon-btn" onClick={() => { void navigator.clipboard?.writeText(selection.text); setSelection(null); engine?.clearSelection?.() }} aria-label="Copy"><Copy size={18} /></button>
+          {isDefinable(selection.text) && (
+            <button className="icon-btn" onClick={() => { setDefining(selection.text); setSelection(null); engine?.clearSelection?.() }} aria-label="Define" title="Look it up in Merriam-Webster"><BookA size={18} /></button>
+          )}
         </div>
       )}
+      {defining && <DefineDialog word={defining} onClose={() => setDefining(null)} />}
       {activeNote && (
         <div className="popover" style={{ left: '50%', bottom: 90 }}>
           <span className="small truncate" style={{ maxWidth: 180 }}>{activeNote.note || activeNote.text}</span>

@@ -2,7 +2,7 @@ services:
   caravan:
     build: .
     image: caravan:latest
-    container_name: caravan
+    # no fixed container_name: a fixed name clashes when the same app is also started another way (e.g. a TrueNAS app)
     restart: unless-stopped
     ports:
       - "8420:8420"
