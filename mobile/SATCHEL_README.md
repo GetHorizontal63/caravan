@@ -39,8 +39,9 @@ Satchel is the Android app for **[Caravan](https://github.com/{caravan})**, the 
 |---|---|
 | [Install](#install) | Download, install and connect, in four steps |
 | [The app at a glance](#glance) | Tabs, shelves and the update ribbon |
-| [Reading](#reading) | Turning pages, highlights, display settings |
-| [Your library](#library) | Bookshelf, books, series and collections |
+| [Reading](#reading) | Turning pages, highlights, looking up words, display settings |
+| [Reading offline](#offline) | Saving books on the phone; how your notes sync back |
+| [Your library](#library) | Libraries, bookshelf, books, series, collections and My Shelf |
 | [Troubleshooting](#troubleshooting) | Fixes for common problems, step by step |
 | [Reference](#reference) | Permissions, what's stored where, versions |
 
@@ -106,7 +107,7 @@ You stay signed in until you sign out. **Change server** under the button takes 
 | **Update ribbon** (top) | Appears when a newer Satchel is released. **Update** downloads it; **✕** hides it until the next release. |
 | **Featured book** | The book you're reading. **Continue** opens it where you left off, even if you were last reading in the browser. |
 | **Shelves** | Continue reading, Recently added and Favorites. Swipe sideways; **See all** lists everything. |
-| **Bottom bar** | **Home**, **Library**, **Search** and **Settings**. |
+| **Bottom bar** | **Home**, **Library**, **My Shelf**, **Search** and **Settings**. |
 | **Top bar** | Administration (admins), Settings and Sign out. |
 
 </td></tr></table>
@@ -128,7 +129,8 @@ The Android **back** button or back gesture works as you'd expect. It closes wha
 | Tap the **right** or **left** side | turn forward or back |
 | **Drag a corner or the edge** | turn the page by hand. It curls from wherever you grab it, and you can let it fall back. |
 | Tap the **middle** | show the menus: Contents, Bookmark, Search, Display (**Aa**), and the progress bar |
-| **Long-press** a word, then drag | select text, then pick one of five highlight colours, add a note, or copy |
+| **Long-press** a word, then drag | select text, then pick one of five highlight colours, add a note, copy, or **Define** |
+| **Define** (book-with-an-A button) | look the word up in the Merriam-Webster dictionary: syllables, part of speech, pronunciation (tap the speaker to hear it) and definitions |
 | **Contents → Bookmarks & highlights** | see your notes and jump to any of them |
 | **Back** | close the menus or panels first, then leave the book |
 
@@ -137,6 +139,23 @@ The Android **back** button or back gesture works as you'd expect. It closes wha
 **Display (Aa):** Light, Sepia, Dark or Black theme; **Book on a desk** (a real 5 × 7 page on walnut, oak, slate, linen, leather, night, or your own photo) or **Full screen** text; **Page curl**, **Slide** or **Instant** page turns; font, size, spacing, margins, brightness, and keep the screen on.
 
 If a book has **several versions** (for example EPUB and PDF), pick one on the book's page. Your place and highlights carry across.
+
+**Define** needs a dictionary key set up once on the server by an administrator (see the [Caravan README](https://github.com/{caravan}#dictionary-key)).
+
+---
+
+<a id="offline"></a>
+
+## Reading offline
+
+1. On a book's page, tap the **cloud** button. Satchel saves the version you picked on the phone, with its cover, your place and your notes. The cloud gets a tick when it's done.
+2. With no connection, Satchel opens **On this device** with your saved books. Tap one to read it.
+3. Everything you do while offline (your place, bookmarks, highlights, notes) is kept on the phone. The banner shows how many changes are waiting.
+4. When your server is reachable again, Satchel switches back by itself and sends the changes. You can also press **Try again** on the offline screen.
+
+**How it merges:** new bookmarks and highlights are added to the ones on the server, so nothing made elsewhere is lost. Deleting or editing a note applies on the server too. Your place from the phone only wins if you read on the phone more recently than anywhere else.
+
+**Settings → On this device** lists saved books and their sizes, removes them, and has **Sync now**. Removing a saved copy never removes your notes or place from the server.
 
 ---
 
@@ -149,6 +168,8 @@ If a book has **several versions** (for example EPUB and PDF), pick one on the b
 | <img src="https://raw.githubusercontent.com/{caravan}/{source}/docs/img/satchel-shelf.jpg" width="230" alt="The bookcase"> | <img src="https://raw.githubusercontent.com/{caravan}/{source}/docs/img/satchel-book.jpg" width="230" alt="A Court of Mist and Fury's page at 64%"> | <img src="https://raw.githubusercontent.com/{caravan}/{source}/docs/img/satchel-series.jpg" width="230" alt="The A Court of Thorns and Roses series page"> |
 | **Library → covers / bookshelf** switches between a cover grid and a bookcase of spines. Series stand together, with bookends. | **Continue reading**, progress, download, add to a collection, favourite, mark finished. | Your progress through the series and **Continue the series**, then the reading order. |
 
+- **Several libraries?** The **Library:** menu under the library's name switches between them. The **Library** button returns to the one you used last.
+- **My Shelf** holds your own private books: tap **Add books** to upload from the phone. Only you can see them, administrators included. To let someone read one, open it and tap **Share**, then tick their name. Books others share with you are under **My Shelf → Shared with me**.
 - **Select several books:** long-press one, tap the others, then **Add to collection** or **Add to series**.
 - **Search** finds titles, authors, series, tags and ISBNs.
 - Adding books, covers and spines happens on the server: drop files into its folders and they appear within seconds. See the [Caravan README](https://github.com/{caravan}#step-3).
@@ -192,7 +213,15 @@ Satchel was connected before but the server isn't answering now. Check the serve
 1. Allow your browser or file manager to install unknown apps (Step 2).
 2. If Android says the update conflicts with the installed app, uninstall Satchel and install the new one. You only need to enter the server address and sign in again; everything else is on the server.
 
-### 5. The back button closes the app
+### 5. Notes I made offline aren't on the server yet
+
+Open Satchel while connected; it sends them by itself. Or go to **Settings → On this device** and tap **Sync now**: the line above it shows how many changes are still waiting. If that number doesn't go down, Satchel can't reach the server yet; see problem 1.
+
+### 6. Long-pressing a word shows Android's Copy / Share bar instead of Satchel's
+
+You're on an old version. Install the [latest release](https://github.com/{satchel}/releases/latest): selecting text then shows Satchel's own popover (highlight, note, copy, Define).
+
+### 7. The back button closes the app
 
 You're on an old version. Install the [latest release](https://github.com/{satchel}/releases/latest), which handles back and the back gesture.
 
@@ -206,7 +235,7 @@ You're on an old version. Install the [latest release](https://github.com/{satch
 |---|---|
 | Android | {minAndroid} or newer |
 | Permissions | Internet only |
-| Stored on the phone | your server's address, your sign-in, and your appearance choice |
+| Stored on the phone | your server's address, your sign-in, your appearance choice, books you save for offline reading, and changes made offline until they sync |
 | Stored on the server | everything else: books, progress, bookmarks, highlights, notes, favourites, collections, and your reading-display choices |
 | Connections | your Caravan server, plus GitHub once in a while to check for new releases |
 | Plain `http://` | allowed, so you can use a home-network address |

@@ -6,6 +6,7 @@ import { DefineDialog, isDefinable } from '../components/DefineDialog'
 import { api, authedUrl, getToken, serverUrl, type Annotation, type BookDetail } from '../api'
 import { useSession } from '../session'
 import { useBackHandler } from '../nativeBack'
+import { createAnnotation, deleteAnnotation, getOffline, isOfflineError, patchAnnotation, patchOffline, saveProgress, storeAnnotations } from '../offline'
 import { Spinner } from '../components/ui'
 import { loadPrefs, savePrefs, themes, type ReaderPrefs } from './prefs'
 import { ReaderSettingsForm } from './ReaderSettings'
@@ -20,6 +21,9 @@ type Panel = null | 'toc' | 'notes' | 'search' | 'settings'
 
 /** `file` picks a version; without it the server resumes the version this reader used last (else the primary). */
 async function fetchContent(id: string, file: string | null): Promise<{ blob: Blob; format: string; fileId: number | null }> {
+  // saved on this device: no download needed (and works offline)
+  const saved = await getOffline(Number(id)).catch(() => undefined)
+  if (saved && (!file || String(saved.fileId) === file)) return { blob: saved.blob, format: saved.format, fileId: saved.fileId }
   const res = await fetch(`${serverUrl()}/api/books/${id}/content${file ? `?file=${encodeURIComponent(file)}` : ''}`, { headers: { Authorization: `Bearer ${getToken()}` } })
   if (!res.ok) throw new Error(res.status === 415 ? 'This format cannot be read in the browser — download it instead.' : `Could not load book (${res.status})`)
   return { blob: await res.blob(), format: res.headers.get('X-Book-Format') ?? 'epub', fileId: Number(res.headers.get('X-Book-File')) || null }
@@ -33,15 +37,41 @@ export default function ReaderPage() {
   const qc = useQueryClient()
   const { user, setUser } = useSession()
 
-  const book = useQuery({ queryKey: ['book', id], queryFn: () => api<BookDetail>(`/api/books/${id}`), staleTime: 0 })
+  const book = useQuery({
+    queryKey: ['book', id],
+    queryFn: async () => {
+      try {
+        const d = await api<BookDetail>(`/api/books/${id}`)
+        void patchOffline(Number(id), { detail: d }) // keep a saved copy's details current
+        return d
+      } catch (e) {
+        const saved = isOfflineError(e) ? await getOffline(Number(id)).catch(() => undefined) : undefined
+        if (saved) return saved.detail
+        throw e
+      }
+    },
+    staleTime: 0,
+    retry: (n, e) => !isOfflineError(e) && n < 1,
+  })
   const content = useQuery({ queryKey: ['content', id, fileParam], queryFn: () => fetchContent(id, fileParam), staleTime: Infinity, gcTime: 60_000, retry: 0 })
   // the version actually being read (known once the content arrives)
   const fileId = content.data?.fileId ?? null
   const notesQ = useQuery({
     queryKey: ['annotations', id, fileId],
-    queryFn: () => api<Annotation[]>(`/api/books/${id}/annotations${fileId ? `?file=${fileId}` : ''}`),
+    queryFn: async () => {
+      try {
+        return await api<Annotation[]>(`/api/books/${id}/annotations${fileId ? `?file=${fileId}` : ''}`)
+      } catch (e) {
+        const saved = isOfflineError(e) ? await getOffline(Number(id)).catch(() => undefined) : undefined
+        if (saved && saved.fileId === fileId) return saved.annotations
+        throw e
+      }
+    },
     enabled: !!content.data,
+    retry: (n, e) => !isOfflineError(e) && n < 1,
   })
+  // the saved copy keeps the same notes the reader shows (including ones made offline)
+  useEffect(() => { if (notesQ.data) void storeAnnotations(Number(id), fileId, notesQ.data) }, [notesQ.data, id, fileId])
 
   const [prefs, setPrefs] = useState<ReaderPrefs>(() => loadPrefs(user?.prefs?.reader))
   const [engine, setEngine] = useState<EngineHandle | null>(null)
@@ -85,7 +115,7 @@ export default function ReaderPage() {
     const p = pending.current
     if (!p) return
     pending.current = null
-    void api(`/api/books/${id}/progress`, { method: 'PUT', body: { locator: p.locator, fraction: p.fraction, fileId }, keepalive }).catch(() => {})
+    void saveProgress(Number(id), { locator: p.locator, fraction: p.fraction, fileId }, keepalive).catch(() => {})
   }, [id, fileId])
   useEffect(() => {
     const t = setInterval(() => flush(), 4000)
@@ -180,18 +210,18 @@ export default function ReaderPage() {
   const toggleBookmark = async () => {
     if (!pos) return
     if (bookmarkHere) {
-      await api(`/api/annotations/${bookmarkHere.id}`, { method: 'DELETE' })
+      await deleteAnnotation(bookmarkHere.id)
       setNotes(ns => ns.filter(n => n.id !== bookmarkHere.id))
     } else {
       const a = { kind: 'bookmark' as const, locator: pos.locator, chapter: pos.chapter ?? pos.label ?? null, text: null, note: null, color: null, fraction: pos.fraction, fileId }
-      const r = await api<{ id: number }>(`/api/books/${id}/annotations`, { body: a })
+      const r = await createAnnotation(Number(id), a)
       setNotes(ns => [...ns, { ...a, id: r.id, createdAt: Date.now(), native: true }])
     }
   }
   const highlight = async (color: string, note?: string) => {
     if (!selection) return
     const a = { kind: 'highlight' as const, locator: selection.locator, text: selection.text, note: note ?? null, color, chapter: pos?.chapter ?? null, fraction: pos?.fraction ?? null, fileId }
-    const r = await api<{ id: number }>(`/api/books/${id}/annotations`, { body: a })
+    const r = await createAnnotation(Number(id), a)
     const full = { ...a, id: r.id, createdAt: Date.now(), native: true }
     setNotes(ns => [...ns, full])
     engine?.addHighlight?.(full)
@@ -199,7 +229,7 @@ export default function ReaderPage() {
     setSelection(null)
   }
   const deleteNote = async (a: Annotation) => {
-    await api(`/api/annotations/${a.id}`, { method: 'DELETE' })
+    await deleteAnnotation(a.id)
     setNotes(ns => ns.filter(n => n.id !== a.id))
     if (a.kind === 'highlight') engine?.removeHighlight?.(a)
     setActiveNote(null)
@@ -207,7 +237,7 @@ export default function ReaderPage() {
   const editNote = async (a: Annotation) => {
     const note = prompt('Note', a.note ?? '')
     if (note === null) return
-    await api(`/api/annotations/${a.id}`, { method: 'PATCH', body: { note } })
+    await patchAnnotation(a.id, { note })
     setNotes(ns => ns.map(n => (n.id === a.id ? { ...n, note } : n)))
     setActiveNote(null)
   }

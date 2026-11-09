@@ -26,7 +26,8 @@ Project home: **https://github.com/GetHorizontal63/caravan** · Android app: **h
 | [What you need](#what-you-need) | Your books, and the example library used in this guide |
 | [The screen at a glance](#screen) | What every button on the home screen does |
 | [From folder to first page](#steps) | Nine steps, with pictures, using Dune and A Court of Thorns and Roses |
-| [Satchel, the Android app](#satchel) | Connecting your phone |
+| [My Shelf](#my-shelf) | Your private books, and sharing them with people you choose |
+| [Satchel, the Android app](#satchel) | Connecting your phone, and reading offline |
 | [Troubleshooting](#troubleshooting) | Fixes for common problems, step by step |
 | [Reference](#reference) | Formats, file naming rules, settings, how it works |
 
@@ -135,7 +136,7 @@ To start Caravan with Windows, run `scripts\windows\install-service.ps1` from an
 | # | What it is | What it does |
 |:-:|---|---|
 | 1 | **Caravan** | Back to Home from anywhere. The logo follows your colour palette. |
-| 2 | **Navigation** | **Home**, plus one tab for each library (here, **Books**). On a phone these move to a bar at the bottom. |
+| 2 | **Navigation** | **Home**, one tab for each library (here, **Books**), and **My Shelf**. On a phone these move to a bar at the bottom: Home, Library, My Shelf, Search and Settings. |
 | 3 | **Search** | Finds titles, authors, series, tags and ISBNs across every library. Press Enter. |
 | 4 | **Get Satchel** | Opens the latest Android app download (web only). |
 | 5 | **Administration** | Admins only: dashboard, libraries, users, metadata and server settings. |
@@ -244,6 +245,8 @@ You don't need to press anything: Caravan watches the folders and picks up new o
 | 6 | **Scan** (admins) | rescan now. You rarely need this: folders are watched, and also rescanned every 6 hours. |
 | 7 | **Click** a book, or **right-click / long-press** it | open it, or start selecting several books ([step 6](#step-6)) |
 
+**Several libraries?** A **Library:** menu under the library's name switches between them. It's there on phones too, where the top tabs are hidden, and the **Library** button in the bottom bar returns to the library you used last.
+
 On the bookshelf, series come first, A to Z, each in reading order with a bookend after it. The rest follow in your chosen sort. Books without spine pictures get a cloth spine in their cover's colour, sized by page count. A ribbon marks books you're reading, and a green dot marks finished ones.
 
 ---
@@ -345,6 +348,14 @@ Going back a page is the forward turn mirrored, so the left page lifts from its 
 | <img src="docs/img/reader-select.jpg" alt="'Plans within plans within plans' selected, with a popover of five colours, a note button and a copy button"> | <img src="docs/img/reader-highlight.jpg" alt="The same line now highlighted in yellow"> | <img src="docs/img/reader-notes.jpg" alt="The Bookmarks & highlights panel listing the highlight under MUAD'DIB"> |
 | Drag across the words (long-press on a phone). | Choose one of **five colours**, add a **note**, or **copy** the text. | **Contents → Bookmarks & highlights** lists them; tap one to jump there. |
 
+**Look up a word:**
+
+1. Select a word, or a short phrase of up to three words. On a phone, long-press it.
+2. Press **Define** (the book-with-an-A button) in the popover.
+3. A box shows the word from the **Merriam-Webster Collegiate® Dictionary**: syllables, part of speech, the pronunciation guide (press the speaker to hear it), and the definitions. If the word isn't in the dictionary, it suggests spellings to try.
+
+An administrator turns this on once, with a free key: see [Set up the dictionary](#dictionary-key). Words you've looked up are remembered for 30 days, so looking them up again is instant.
+
 **Display settings** (Aa):
 
 <table><tr>
@@ -382,6 +393,27 @@ Appearance is saved per device, so your phone and your computer can each look th
 
 ---
 
+<a id="my-shelf"></a>
+
+## My Shelf
+
+Every account has a **My Shelf**: a private place for your own books, separate from the libraries an administrator manages.
+
+| | |
+|---|---|
+| **Who sees it** | Only you. Administrators can't see, open, edit or remove books on anyone else's shelf, and they don't appear in searches, lists or counts for anyone else. |
+| **Adding books** | Open **My Shelf** and press **Add books**. Choose files from your computer or phone; any [format Caravan reads](#formats) works. Covers, details, the reader, progress, highlights and the bookshelf view all work as usual. |
+| **Sharing** | Open one of your books and press **Share** (next to the heart). Tick the people who may read it, or use **Everyone** or **Nobody**, then **Save**. They find it under **My Shelf → Shared with me**, with their own place and highlights. Untick someone to take it back straight away. |
+| **On the book's page** | Your books say **On your shelf · only you can see it** or **…shared with 2 people**. Books shared with you say **Shared with you by …**. |
+| **Removing** | **⋯ → Remove from my shelf** deletes the file. Anyone you shared it with loses access. |
+
+The shelf has two tabs, **My books** and **Shared with me**, with the same sorting, filters and covers/bookshelf switch as a library.
+
+> [!NOTE]
+> Shelf files are stored on the server in the config folder (`/config/shelves/`). Someone with direct access to the server's disk could open them; Caravan itself never shows them to anyone but you and the people you share with.
+
+---
+
 <a id="satchel"></a>
 
 ## Satchel, the Android app
@@ -396,6 +428,19 @@ Appearance is saved per device, so your phone and your computer can each look th
 4. Sign in with your Caravan account.
 
 Satchel shows a ribbon when a newer release is out; tap **Update** to download it. More pictures and details are in the **[Satchel README](https://github.com/GetHorizontal63/satchel)**.
+
+<a id="offline"></a>
+
+### Reading offline
+
+1. On a book's page in Satchel, press the **cloud** button (where the web app has Download). It saves the version you picked on your phone, with its cover, your place and your notes. The cloud gets a tick when it's saved.
+2. Without a connection, Satchel opens **On this device**, listing your saved books. Tap one to read it as usual.
+3. While offline, everything you do is kept on the phone: your place, bookmarks, highlights and notes. The banner shows how many changes are waiting.
+4. When the server can be reached again, Satchel goes back to normal and sends those changes on its own. It also tries when you reopen the app and every so often in the background.
+
+**How changes merge:** new bookmarks and highlights from the phone are added to the ones made elsewhere, so nothing is lost. Deleting or editing a note on the phone applies on the server too. Your reading place from the phone only replaces the one on the server if you read on the phone more recently.
+
+**Settings → On this device** lists saved books with their sizes, removes them, and has **Sync now**. Removing a saved copy never touches your notes or place on the server.
 
 **Other ways to read:**
 
@@ -479,6 +524,18 @@ git ls-remote https://github.com/GetHorizontal63/caravan.git main               
 
 If the image is older than your last push, open **Apps → caravan → Edit → Save** to rebuild.
 
+### 8. "Define" says the dictionary isn't set up
+
+1. An administrator opens **Administration → Metadata & server**.
+2. Paste a Merriam-Webster key into **Merriam-Webster dictionary key** and press **Save** ([how to get one](#dictionary-key)).
+3. If it says Merriam-Webster **refused** the key, check that it's a **Collegiate Dictionary** key; keys for the other dictionaries don't work here.
+
+### 9. Notes made offline haven't appeared on the server
+
+1. Open Satchel while connected. Changes are sent automatically when the app opens and when the connection returns.
+2. In **Settings → On this device**, press **Sync now**. The line above it says how many changes are still waiting.
+3. If the count doesn't go down, Satchel still can't reach the server; see [problem 1](#ts-connect).
+
 > [!NOTE]
 > Still stuck? Open the app's **Logs** in TrueNAS (or `docker logs`) and include the last few lines when you ask for help. Book links in the logs no longer include your sign-in token, so they're safe to share.
 
@@ -529,6 +586,16 @@ Pictures in folders are re-read whenever the file changes. Removing a spine pict
 - **Highlights** made in one version are found in the others by searching for their text near where they were. This works exactly between EPUB, MOBI, AZW3, FB2 and converted text. In PDFs, highlights appear in the notes list marked *approx.*, and tapping one jumps to about the right page.
 - The notes list marks highlights made in another version with that version's format.
 
+<a id="dictionary-key"></a>
+
+### Set up the dictionary
+
+1. Go to **[dictionaryapi.com](https://dictionaryapi.com)** and register (free).
+2. Request a key for the **Merriam-Webster's Collegiate® Dictionary with Audio**.
+3. In Caravan, open **Administration → Metadata & server**, paste it into **Merriam-Webster dictionary key**, and press **Save**.
+
+The key stays on the server; browsers and phones never see it. The free key allows 1,000 look-ups a day, and Caravan remembers each word for 30 days, so repeated look-ups don't count.
+
 ### Configuration
 
 | Variable | Default | What it does |
@@ -542,7 +609,7 @@ Pictures in folders are re-read whenever the file changes. Removing a spine pict
 | `CARAVAN_WATCH` | `1` | `0` stops watching library folders (scheduled and manual scans only) |
 | `CARAVAN_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 
-The older `JR_*` names still work. More settings live in **Administration → Metadata & server**: server name, provider order, automatic matching, the rescan interval (default every 6 hours), and the Google Books API key.
+The older `JR_*` names still work. More settings live in **Administration → Metadata & server**: server name, provider order, automatic matching, the rescan interval (default every 6 hours), the Google Books API key, and the Merriam-Webster dictionary key.
 
 ### How books are matched
 
@@ -555,7 +622,8 @@ The older `JR_*` names still work. More settings live in **Administration → Me
 ### Known limits
 
 - DRM-protected books can't be opened. Remove DRM with tools you're entitled to use, or buy DRM-free.
-- PDFs can't show highlights (bookmarks work).
+- PDFs can't show highlights (bookmarks work), and **Define** needs selectable text, so it doesn't work in PDFs or comics.
+- Offline reading is for Satchel. In a browser, the page itself needs the server to load.
 - Comic libraries have no spine pictures; the bookcase uses generated spines for them.
 - Folder watching depends on the system's change notifications. Some network mounts don't provide them, so the scheduled scan covers those.
 

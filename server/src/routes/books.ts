@@ -172,11 +172,19 @@ export default async function bookRoutes(app: FastifyInstance) {
       .run({ ...patch, uid, bid: bookId } as any)
   }
 
-  app.put<{ Params: { id: string }; Body: { locator?: string; fraction?: number; fileId?: number } }>('/api/books/:id/progress', async (req, reply) => {
+  /**
+   * Reading position. `at` is when it was recorded on the device: a position saved offline and sent later only
+   * replaces the stored one if it's newer (another device may have moved on in the meantime).
+   */
+  app.put<{ Params: { id: string }; Body: { locator?: string; fraction?: number; fileId?: number; at?: number } }>('/api/books/:id/progress', async (req, reply) => {
     const b = requireBook(req.params.id, reply, req.user!.id)
     if (!b) return
+    const at = Number(req.body?.at)
+    const when = Number.isFinite(at) && at > 0 ? Math.min(at, now()) : now()
+    const cur = db.prepare('SELECT last_read FROM user_books WHERE user_id = ? AND book_id = ?').get(req.user!.id, b.id) as { last_read: number | null } | undefined
+    if (cur?.last_read && cur.last_read > when) return { ok: true, stale: true }
     const fraction = Math.max(0, Math.min(1, Number(req.body?.fraction) || 0))
-    const patch: Record<string, unknown> = { locator: req.body?.locator ?? null, fraction, last_read: now(), file_id: fileOf(b, req.body?.fileId).id || null }
+    const patch: Record<string, unknown> = { locator: req.body?.locator ?? null, fraction, last_read: when, file_id: fileOf(b, req.body?.fileId).id || null }
     if (fraction >= 0.995) patch.finished = 1
     upsertUserBook(req.user!.id, b.id, patch)
     return { ok: true }
@@ -230,14 +238,16 @@ export default async function bookRoutes(app: FastifyInstance) {
     })
   })
 
-  app.post<{ Params: { id: string }; Body: { kind?: string; locator: string; text?: string; note?: string; color?: string; chapter?: string; fraction?: number; fileId?: number } }>('/api/books/:id/annotations', async (req, reply) => {
+  app.post<{ Params: { id: string }; Body: { kind?: string; locator: string; text?: string; note?: string; color?: string; chapter?: string; fraction?: number; fileId?: number; createdAt?: number } }>('/api/books/:id/annotations', async (req, reply) => {
     const b = requireBook(req.params.id, reply, req.user!.id)
     if (!b) return
-    const { kind = 'highlight', locator, text, note, color, chapter, fraction, fileId } = req.body ?? ({} as any)
+    const { kind = 'highlight', locator, text, note, color, chapter, fraction, fileId, createdAt } = req.body ?? ({} as any)
+    // made offline and synced later: keep when it was really made
+    const made = typeof createdAt === 'number' && createdAt > 0 && createdAt <= now() ? createdAt : now()
     if (!locator) return reply.code(400).send({ error: 'locator is required' })
     const r = db.prepare('INSERT INTO annotations(user_id, book_id, kind, locator, text, note, color, chapter, fraction, file_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
       .run(req.user!.id, b.id, kind === 'bookmark' ? 'bookmark' : 'highlight', locator, text?.slice(0, 5000) ?? null, note?.slice(0, 5000) ?? null, color ?? null, chapter ?? null,
-        typeof fraction === 'number' && Number.isFinite(fraction) ? Math.max(0, Math.min(1, fraction)) : null, fileOf(b, fileId).id || null, now())
+        typeof fraction === 'number' && Number.isFinite(fraction) ? Math.max(0, Math.min(1, fraction)) : null, fileOf(b, fileId).id || null, made)
     return { id: Number(r.lastInsertRowid) }
   })
 

@@ -863,3 +863,11 @@ table.table { width: 100%; border-collapse: collapse; }
 .share-row input { width: 20px; height: 20px; accent-color: var(--accent); }
 .avatar.small { width: 30px; height: 30px; font-size: 13px; display: inline-grid; place-items: center; flex: none; }
 @media (max-width: 760px) { .tabbar a { font-size: 10.5px; } }
+
+/* ---------- offline ---------- */
+.offline-page { padding-top: calc(18px + var(--safe-top)); }
+.offline-banner { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 22px; border-radius: 14px;
+  background: color-mix(in srgb, var(--accent-2) 16%, var(--bg-elev-solid)); border: 1px solid color-mix(in srgb, var(--accent-2) 35%, transparent); }
+.offline-banner .small { opacity: .85; margin-top: 2px; }
+.icon-btn.busy { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .45; } }

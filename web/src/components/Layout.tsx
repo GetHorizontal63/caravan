@@ -9,6 +9,7 @@ import { SelectionBar, SelectionProvider } from './selection'
 import { useSession } from '../session'
 import { ToastHost } from './ui'
 import { logoFor, useAppearance } from '../theme'
+import { syncOutbox } from '../offline'
 
 export default function Layout() {
   const { user, signOut, info } = useSession()
@@ -19,6 +20,8 @@ export default function Layout() {
 
   const appearance = useAppearance()
   useEffect(() => { window.scrollTo(0, 0) }, [loc.pathname])
+  // back online (or just started): send anything changed while offline
+  useEffect(() => { void syncOutbox() }, [])
 
   // the Library tab goes back to the library you last looked at
   const lastId = (() => { try { return localStorage.getItem('caravan.lastLibrary') } catch { return null } })()

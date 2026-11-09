@@ -2,13 +2,14 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Download, Heart, CheckCircle2, Search, Pencil, Image, RefreshCw, Trash2, MoreHorizontal, Layers, FolderPlus, ListOrdered, Share2, Lock, Users } from 'lucide-react'
-import { api, authedUrl, coverUrl, formatBytes, type BookDetail, type BookSummary } from '../api'
+import { api, authedUrl, coverUrl, formatBytes, isNativeApp, type BookDetail, type BookSummary } from '../api'
 import { Book3D, Shelf, useCoverColor } from '../components/books'
 import { Spinner, toast } from '../components/ui'
 import { CoverDialog, EditMetadataDialog, IdentifyDialog } from '../components/MetadataDialogs'
 import { AddToCollectionDialog, AddToSeriesDialog } from '../components/GroupDialogs'
 import { Menu, type MenuItem } from '../components/Dropdown'
 import { ShareDialog } from '../components/ShareDialog'
+import { OfflineButton } from '../components/OfflineButton'
 import { useSession } from '../session'
 
 const sourceLabel: Record<string, string> = { file: 'From file', openlibrary: 'Open Library', googlebooks: 'Google Books', manual: 'Edited', embedded: 'Embedded', upload: 'Uploaded', url: 'URL' }
@@ -146,7 +147,10 @@ export default function BookPage() {
                 <BookOpen size={20} />{b.finished ? 'Read again' : pct > 0 ? 'Continue reading' : 'Start reading'}
               </button>
               {pct > 0 && !b.finished && <ProgressRing value={b.progress} />}
-              <a className="icon-btn" href={authedUrl(`/api/books/${b.id}/file`, { file: chosen?.id })} download title={`Download ${chosen?.label ?? ''}`.trim()}><Download size={21} /></a>
+              {/* Satchel keeps a readable copy on the phone (works offline); the web app downloads the original file */}
+              {isNativeApp()
+                ? <OfflineButton bookId={b.id} fileId={chosen?.id ?? null} label={chosen?.label} />
+                : <a className="icon-btn" href={authedUrl(`/api/books/${b.id}/file`, { file: chosen?.id })} download title={`Download ${chosen?.label ?? ''}`.trim()}><Download size={21} /></a>}
               <button className="icon-btn" title="Add to collection" onClick={() => setDialog('collection')}><FolderPlus size={21} /></button>
               <button className={`icon-btn ${b.favorite ? 'active' : ''}`} title="Favorite" onClick={() => void setState({ favorite: !b.favorite })} style={b.favorite ? { color: 'var(--accent)' } : undefined}>
                 <Heart size={21} fill={b.favorite ? 'currentColor' : 'none'} />

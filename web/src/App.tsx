@@ -14,6 +14,7 @@ import SettingsPage from './pages/Settings'
 import CollectionPage from './pages/Collection'
 import SeriesPage from './pages/Series'
 import ShelfPage from './pages/Shelf'
+import OfflineApp from './pages/Offline'
 
 // The reader pulls in foliate-js and pdf.js; admin is rarely used. Load both on demand.
 const ReaderPage = lazy(() => import('./reader/ReaderPage'))
@@ -31,6 +32,7 @@ export default function App() {
 
   if (status === 'loading') return <div className="center-screen"><Spinner /></div>
   if (status === 'connect' || status === 'unreachable') return <ConnectPage unreachable={status === 'unreachable'} />
+  if (status === 'offline') return <Suspense fallback={<div className="center-screen"><Spinner /></div>}><OfflineApp reader={<ReaderRoute />} /></Suspense>
   if (status === 'setup') return <SetupPage />
   if (status === 'login') return <LoginPage />
 

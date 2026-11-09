@@ -3,7 +3,11 @@ import { api, getToken, needsServerUrl, setToken, type User } from './api'
 
 interface SystemInfo { serverName: string; version: string; setupComplete: boolean }
 
-type Status = 'loading' | 'connect' | 'unreachable' | 'setup' | 'login' | 'ready'
+type Status = 'loading' | 'connect' | 'unreachable' | 'offline' | 'setup' | 'login' | 'ready'
+
+const USER_KEY = 'caravan.lastUser'
+const cachedUser = (): User | null => { try { return JSON.parse(localStorage.getItem(USER_KEY) ?? 'null') } catch { return null } }
+const cacheUser = (u: User | null) => { try { u ? localStorage.setItem(USER_KEY, JSON.stringify(u)) : localStorage.removeItem(USER_KEY) } catch { /* private mode */ } }
 
 interface Session {
   status: Status
@@ -30,13 +34,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       sys = await api<SystemInfo>('/api/system/info')
       setInfo(sys)
     } catch {
+      // signed in before? then read what's saved on this device until the server is back
+      const last = cachedUser()
+      if (getToken() && last) { setUser(last); setStatus('offline'); return }
       setStatus('unreachable')
       return
     }
     if (!sys.setupComplete) { setStatus('setup'); return }
     if (!getToken()) { setStatus('login'); return }
     try {
-      setUser(await api<User>('/api/auth/me'))
+      const me = await api<User>('/api/auth/me')
+      cacheUser(me)
+      setUser(me)
       setStatus('ready')
     } catch {
       setStatus('login')
@@ -56,6 +65,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async signOut() {
       try { await api('/api/auth/logout', { method: 'POST' }) } catch { /* already gone */ }
       setToken(null)
+      cacheUser(null)
       setUser(null)
       setStatus('login')
     },

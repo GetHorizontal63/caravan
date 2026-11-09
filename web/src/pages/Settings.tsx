@@ -8,6 +8,7 @@ import { toast } from '../components/ui'
 import { MODES, PALETTES, logoFor, setAppearance, useAppearance } from '../theme'
 import { loadPrefs, savePrefs, type ReaderPrefs } from '../reader/prefs'
 import { ReaderSettingsForm } from '../reader/ReaderSettings'
+import { OfflineDevice } from './Offline'
 
 export default function SettingsPage() {
   const { user, setUser, info } = useSession()
@@ -32,6 +33,7 @@ export default function SettingsPage() {
     <div style={{ maxWidth: 720 }}>
       <div className="page-title"><h1>Settings</h1></div>
 
+      {isNativeApp() && <OfflineDevice />}
       <section className="card" style={{ marginBottom: 18 }}>
         <h3 style={{ marginBottom: 4 }}>Appearance</h3>
         <p className="small muted" style={{ marginTop: 0 }}>Saved on this device, so the web app and Satchel can each look their own way.</p>

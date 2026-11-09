@@ -10,6 +10,7 @@ import '@fontsource-variable/literata'
 import './styles.css'
 import { applyAppearance } from './theme'
 import { installNativeBack } from './nativeBack'
+import { startOfflineSync } from './offline'
 
 // before the first paint, so there's no flash of the wrong colours
 applyAppearance()
@@ -19,6 +20,9 @@ installNativeBack()
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1, refetchOnWindowFocus: false } },
 })
+
+// changes made offline (position, bookmarks, highlights, notes) are sent when the server is reachable again
+startOfflineSync(() => void queryClient.invalidateQueries())
 
 // Hash routing works identically when served by the server, from file:// in Electron, and inside Capacitor.
 createRoot(document.getElementById('root')!).render(
