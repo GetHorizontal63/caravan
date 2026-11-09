@@ -148,6 +148,18 @@ export function summarize(b: BookRow & Partial<UserBookRow> & { authors?: string
   }
 }
 
+/** For books on a personal shelf: whose it is, and (for the owner) how many people can see it. */
+function shelfInfo(b: BookRow, userId: number) {
+  const o = db.prepare('SELECT l.owner_id AS owner, u.username FROM libraries l LEFT JOIN users u ON u.id = l.owner_id WHERE l.id = ?').get(b.library_id) as { owner: number | null; username: string | null } | undefined
+  if (!o || o.owner === null) return null
+  const mine = o.owner === userId
+  return {
+    mine,
+    ownerName: o.username,
+    sharedWith: mine ? (db.prepare('SELECT COUNT(*) AS n FROM shelf_shares WHERE book_id = ?').get(b.id) as { n: number }).n : 0,
+  }
+}
+
 export function detail(b: BookRow, userId: number) {
   const ub = db.prepare('SELECT locator, fraction, finished, favorite, last_read, file_id FROM user_books WHERE user_id = ? AND book_id = ?').get(userId, b.id) as UserBookRow | undefined
   const info = formatOf(b.path)
@@ -176,6 +188,7 @@ export function detail(b: BookRow, userId: number) {
     locator: ub?.locator ?? null,
     /** the version `locator` belongs to (positions don't carry across formats; `progress` does) */
     locatorFileId: ub?.file_id ?? null,
+    shelf: shelfInfo(b, userId),
     files: filesOf(b).map(f => {
       const fi = formatOf(f.path)
       return { id: f.id, format: f.format, label: fi?.label ?? f.format.toUpperCase(), size: f.size, engine: fi?.engine ?? 'foliate', comic: !!fi?.comic, primary: f.path === b.path, fileName: path.basename(f.path) }

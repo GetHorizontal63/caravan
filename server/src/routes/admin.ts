@@ -12,6 +12,8 @@ import { scanLibrary, scanAll, scanState } from '../scanner.ts'
 import { applyRemote, autoIdentify, metadataQueue, searchProviders, type RemoteBook } from '../metadata/index.ts'
 import { normalizeIsbn, toIsbn10 } from '../metadata/isbn.ts'
 import { formatOf, supportedExtensions } from '../formats.ts'
+import { canManageBook, isSharedLibrary, SHARED_LIBRARIES } from '../access.ts'
+import { deleteShelfFiles } from './shelf.ts'
 
 interface LibraryBody { name: string; kind?: string; paths: string[]; fetchMetadata?: boolean }
 
@@ -29,6 +31,14 @@ export default async function adminRoutes(app: FastifyInstance) {
     const id = Number(r.lastInsertRowid)
     void scanLibrary(id).catch(() => {})
     return { id }
+  })
+
+  // personal shelves aren't administered: every library route below answers "not found" for them
+  app.addHook('preHandler', async (req, reply) => {
+    const m = /^\/api\/libraries\/(\d+)/.exec(req.url)
+    if (m && !isSharedLibrary(Number(m[1]))) return reply.code(404).send({ error: 'Library not found' })
+    const b = /^\/api\/books\/(\d+)/.exec(req.url)
+    if (b && !canManageBook(Number(b[1]), req.user!.id)) return reply.code(404).send({ error: 'Book not found' })
   })
 
   app.put<{ Params: { id: string }; Body: LibraryBody }>('/api/libraries/:id', async (req, reply) => {
@@ -58,7 +68,11 @@ export default async function adminRoutes(app: FastifyInstance) {
     return { ok: true }
   })
 
-  app.get('/api/scan/status', async () => ({ ...scanState, metadataPending: metadataQueue.pending }))
+  app.get('/api/scan/status', async () => {
+    // a scan of someone's shelf shows up only as such: no titles or file names
+    const shelf = scanState.libraryId != null && !isSharedLibrary(scanState.libraryId)
+    return { ...scanState, ...(shelf ? { libraryName: 'a personal shelf', current: '' } : {}), metadataPending: metadataQueue.pending }
+  })
 
   /** Upload books straight into a library's first folder. */
   app.post<{ Params: { id: string } }>('/api/libraries/:id/upload', async (req, reply) => {
@@ -208,7 +222,8 @@ export default async function adminRoutes(app: FastifyInstance) {
 
   app.delete<{ Params: { id: string } }>('/api/users/:id', async (req, reply) => {
     if (Number(req.params.id) === req.user!.id) return reply.code(400).send({ error: 'You cannot delete yourself' })
-    db.prepare('DELETE FROM users WHERE id = ?').run(Number(req.params.id))
+    db.prepare('DELETE FROM users WHERE id = ?').run(Number(req.params.id)) // their shelf goes with them
+    await deleteShelfFiles(Number(req.params.id))
     return { ok: true }
   })
 
@@ -222,17 +237,17 @@ export default async function adminRoutes(app: FastifyInstance) {
   })
 
   app.get('/api/stats', async () => db.prepare(`SELECT
-      (SELECT COUNT(*) FROM books WHERE missing = 0) AS books,
-      (SELECT COUNT(*) FROM authors) AS authors,
-      (SELECT COUNT(DISTINCT series) FROM books WHERE series IS NOT NULL) AS series,
-      (SELECT COUNT(*) FROM books WHERE cover IS NULL AND missing = 0) AS withoutCover,
-      (SELECT COUNT(*) FROM books WHERE metadata_source = 'file' AND missing = 0) AS unmatched,
-      (SELECT COUNT(*) FROM books WHERE missing = 1) AS missing,
-      (SELECT COALESCE(SUM(size), 0) FROM books WHERE missing = 0) AS bytes`).get())
+      (SELECT COUNT(*) FROM books WHERE missing = 0 AND library_id IN ${SHARED_LIBRARIES}) AS books,
+      (SELECT COUNT(DISTINCT ba.author_id) FROM book_authors ba JOIN books b ON b.id = ba.book_id WHERE b.library_id IN ${SHARED_LIBRARIES}) AS authors,
+      (SELECT COUNT(DISTINCT series) FROM books WHERE series IS NOT NULL AND library_id IN ${SHARED_LIBRARIES}) AS series,
+      (SELECT COUNT(*) FROM books WHERE cover IS NULL AND missing = 0 AND library_id IN ${SHARED_LIBRARIES}) AS withoutCover,
+      (SELECT COUNT(*) FROM books WHERE metadata_source = 'file' AND missing = 0 AND library_id IN ${SHARED_LIBRARIES}) AS unmatched,
+      (SELECT COUNT(*) FROM books WHERE missing = 1 AND library_id IN ${SHARED_LIBRARIES}) AS missing,
+      (SELECT COALESCE(SUM(size), 0) FROM books WHERE missing = 0 AND library_id IN ${SHARED_LIBRARIES}) AS bytes`).get())
 
   /** Queue every unmatched / coverless book for a provider lookup. */
   app.post('/api/metadata/refresh-all', async () => {
-    const ids = (db.prepare(`SELECT id FROM books WHERE missing = 0 AND metadata_locked = 0 AND (metadata_source = 'file' OR cover IS NULL)`).all() as { id: number }[]).map(r => r.id)
+    const ids = (db.prepare(`SELECT id FROM books WHERE missing = 0 AND metadata_locked = 0 AND (metadata_source = 'file' OR cover IS NULL) AND library_id IN ${SHARED_LIBRARIES}`).all() as { id: number }[]).map(r => r.id)
     metadataQueue.push(...ids)
     return { queued: ids.length }
   })

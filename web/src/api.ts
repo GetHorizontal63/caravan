@@ -118,6 +118,8 @@ export interface BookDetail extends BookSummary {
   locatorFileId: number | null
   /** available versions (formats), the primary one first */
   files: BookFileInfo[]
+  /** set when the book is on a personal shelf: yours (mine) or shared with you by ownerName */
+  shelf: { mine: boolean; ownerName: string | null; sharedWith: number } | null
 }
 
 export interface BookFileInfo {

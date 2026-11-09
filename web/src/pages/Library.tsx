@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Upload, RefreshCw, Layers, Plus, LayoutGrid, LibraryBig } from 'lucide-react'
 import { api, authedUrl, type Collection, type Library, type SeriesSummary } from '../api'
@@ -47,6 +47,8 @@ export default function LibraryPage() {
   const qc = useQueryClient()
   const libs = useQuery({ queryKey: ['libraries'], queryFn: () => api<Library[]>('/api/libraries') })
   const lib = libs.data?.find(l => String(l.id) === id)
+  const navigate = useNavigate()
+  useEffect(() => { if (lib) try { localStorage.setItem('caravan.lastLibrary', String(lib.id)) } catch { /* private mode */ } }, [lib])
   const view = params.get('view') ?? 'books'
   const set = (k: string, v: string) => setParams(p => { v ? p.set(k, v) : p.delete(k); return p }, { replace: true })
   const layout = (params.get('layout') as 'grid' | 'shelf' | null) ?? savedLayout()
@@ -79,6 +81,12 @@ export default function LibraryPage() {
         <div className="grow">
           <h1>{lib.name}</h1>
           <div className="sub">{lib.count} {lib.kind === 'comics' ? 'comics' : 'books'}</div>
+          {(libs.data?.length ?? 0) > 1 && (
+            <div className="library-switch">
+              <Select label="Library" prefix="Library:" value={String(lib.id)} onChange={v => navigate(`/library/${v}`)}
+                options={libs.data!.map(l => ({ value: String(l.id), label: `${l.name} (${l.count})` }))} />
+            </div>
+          )}
         </div>
         {user?.isAdmin && (
           <>

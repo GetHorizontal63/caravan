@@ -1,13 +1,14 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Download, Heart, CheckCircle2, Search, Pencil, Image, RefreshCw, Trash2, MoreHorizontal, Layers, FolderPlus, ListOrdered } from 'lucide-react'
+import { BookOpen, Download, Heart, CheckCircle2, Search, Pencil, Image, RefreshCw, Trash2, MoreHorizontal, Layers, FolderPlus, ListOrdered, Share2, Lock, Users } from 'lucide-react'
 import { api, authedUrl, coverUrl, formatBytes, type BookDetail, type BookSummary } from '../api'
 import { Book3D, Shelf, useCoverColor } from '../components/books'
 import { Spinner, toast } from '../components/ui'
 import { CoverDialog, EditMetadataDialog, IdentifyDialog } from '../components/MetadataDialogs'
 import { AddToCollectionDialog, AddToSeriesDialog } from '../components/GroupDialogs'
-import { Menu } from '../components/Dropdown'
+import { Menu, type MenuItem } from '../components/Dropdown'
+import { ShareDialog } from '../components/ShareDialog'
 import { useSession } from '../session'
 
 const sourceLabel: Record<string, string> = { file: 'From file', openlibrary: 'Open Library', googlebooks: 'Google Books', manual: 'Edited', embedded: 'Embedded', upload: 'Uploaded', url: 'URL' }
@@ -44,7 +45,7 @@ export default function BookPage() {
     queryFn: () => api<{ items: BookSummary[] }>(`/api/books?${new URLSearchParams({ author: String(firstAuthor!.id), sort: 'series', limit: '40' })}`),
     enabled: !!firstAuthor,
   })
-  const [dialog, setDialog] = useState<'identify' | 'edit' | 'cover' | 'collection' | 'series' | null>(null)
+  const [dialog, setDialog] = useState<'identify' | 'edit' | 'cover' | 'collection' | 'series' | 'share' | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [picked, setPicked] = useState<number | null>(null)
 
@@ -64,6 +65,42 @@ export default function BookPage() {
   const files = b.files ?? []
   const chosen = files.find(f => f.id === picked) ?? files.find(f => f.id === b.locatorFileId) ?? files[0]
   const fileQuery = chosen && files.length > 1 ? `?file=${chosen.id}` : ''
+
+  // admins manage books in the shared libraries (and their own shelf); nobody manages someone else's shelf
+  const canAdmin = !!user?.isAdmin && (!b.shelf || b.shelf.mine)
+  const adminItems: MenuItem[] = canAdmin ? ([
+                  { label: 'Identify…', icon: <Search size={16} />, onSelect: () => setDialog('identify') },
+                  { label: 'Edit metadata…', icon: <Pencil size={16} />, onSelect: () => setDialog('edit') },
+                  { label: 'Change cover…', icon: <Image size={16} />, onSelect: () => setDialog('cover') },
+                  { label: b.series ? 'Change series…' : 'Add to series…', icon: <ListOrdered size={16} />, onSelect: () => setDialog('series') },
+                  {
+                    label: 'Refresh metadata', icon: <RefreshCw size={16} />, onSelect: async () => {
+                      const r = await api<{ found: boolean; book: BookDetail }>(`/api/books/${b.id}/refresh`, { method: 'POST' })
+                      toast(r.found ? 'Metadata refreshed' : 'No confident match — try Identify')
+                      update(r.book)
+                    },
+                  },
+                  {
+                    label: 'Remove from library', icon: <Trash2 size={16} />, danger: true, onSelect: async () => {
+                      if (!confirm('Remove this book from the library? The file on disk is not deleted, and it will come back on the next scan unless you move it.')) return
+                      await api(`/api/books/${b.id}`, { method: 'DELETE' })
+                      void qc.invalidateQueries()
+                      nav(-1)
+                    },
+                  },
+                ] as MenuItem[]).filter(i => !(b.shelf && i.label === 'Remove from library')) : []
+  const shelfItems: MenuItem[] = b.shelf?.mine ? [
+    { label: b.shelf.sharedWith ? `Sharing (${b.shelf.sharedWith})…` : 'Share…', icon: <Share2 size={16} />, onSelect: () => setDialog('share') },
+    {
+      label: 'Remove from my shelf', icon: <Trash2 size={16} />, danger: true, onSelect: async () => {
+        if (!confirm(`Remove “${b.title}” from your shelf? The file is deleted, and people you shared it with lose access.`)) return
+        await api(`/api/shelf/books/${b.id}`, { method: 'DELETE' })
+        void qc.invalidateQueries()
+        nav('/shelf')
+      },
+    },
+  ] : []
+  const menuItems = [...adminItems, ...shelfItems]
 
   const facts: [string, ReactNode][] = [
     ['Format', files.length > 1 ? files.map(f => f.label).join(' · ') : chosen?.label ?? b.formatLabel],
@@ -91,6 +128,13 @@ export default function BookPage() {
             <div className="authors">
               {b.authorIds.map((a, i) => <span key={a.id}>{i > 0 && ', '}<Link to={`/search?author=${a.id}&label=${encodeURIComponent(a.name)}&sort=series`}>{a.name}</Link></span>)}
             </div>
+            {b.shelf && (
+              <div className="shelf-badge">
+                {b.shelf.mine
+                  ? <>{b.shelf.sharedWith ? <Users size={14} /> : <Lock size={14} />}On your shelf · {b.shelf.sharedWith ? `shared with ${b.shelf.sharedWith} ${b.shelf.sharedWith === 1 ? 'person' : 'people'}` : 'only you can see it'}</>
+                  : <><Users size={14} />Shared with you by {b.shelf.ownerName ?? 'another reader'}</>}
+              </div>
+            )}
             {b.series && (
               <Link className="series" to={`/series/${encodeURIComponent(b.series)}?library=${b.libraryId}`}>
                 <Layers size={14} />{b.series}{b.seriesIndex != null && ` · Book ${b.seriesIndex}`}
@@ -110,29 +154,8 @@ export default function BookPage() {
               <button className={`icon-btn ${b.finished ? 'active' : ''}`} title={b.finished ? 'Mark unread' : 'Mark finished'} onClick={() => void setState({ finished: !b.finished })} style={b.finished ? { color: 'var(--ok)' } : undefined}>
                 <CheckCircle2 size={21} />
               </button>
-              {user?.isAdmin && (
-                <Menu label="Manage book" trigger={<MoreHorizontal size={22} />} items={[
-                  { label: 'Identify…', icon: <Search size={16} />, onSelect: () => setDialog('identify') },
-                  { label: 'Edit metadata…', icon: <Pencil size={16} />, onSelect: () => setDialog('edit') },
-                  { label: 'Change cover…', icon: <Image size={16} />, onSelect: () => setDialog('cover') },
-                  { label: b.series ? 'Change series…' : 'Add to series…', icon: <ListOrdered size={16} />, onSelect: () => setDialog('series') },
-                  {
-                    label: 'Refresh metadata', icon: <RefreshCw size={16} />, onSelect: async () => {
-                      const r = await api<{ found: boolean; book: BookDetail }>(`/api/books/${b.id}/refresh`, { method: 'POST' })
-                      toast(r.found ? 'Metadata refreshed' : 'No confident match — try Identify')
-                      update(r.book)
-                    },
-                  },
-                  {
-                    label: 'Remove from library', icon: <Trash2 size={16} />, danger: true, onSelect: async () => {
-                      if (!confirm('Remove this book from the library? The file on disk is not deleted, and it will come back on the next scan unless you move it.')) return
-                      await api(`/api/books/${b.id}`, { method: 'DELETE' })
-                      void qc.invalidateQueries()
-                      nav(-1)
-                    },
-                  },
-                ]} />
-              )}
+              {b.shelf?.mine && <button className="icon-btn" title={b.shelf.sharedWith ? `Shared with ${b.shelf.sharedWith}` : 'Share'} onClick={() => setDialog('share')} style={b.shelf.sharedWith ? { color: 'var(--accent)' } : undefined}><Share2 size={21} /></button>}
+              {menuItems.length > 0 && <Menu label="Manage book" trigger={<MoreHorizontal size={22} />} items={menuItems} />}
             </div>
 
             {files.length > 1 && (
@@ -173,6 +196,7 @@ export default function BookPage() {
       {dialog === 'edit' && <EditMetadataDialog book={b} onClose={() => setDialog(null)} onDone={update} />}
       {dialog === 'cover' && <CoverDialog book={b} onClose={() => setDialog(null)} onDone={update} />}
       {dialog === 'collection' && <AddToCollectionDialog book={b} onClose={() => setDialog(null)} />}
+      {dialog === 'share' && <ShareDialog bookId={b.id} title={b.title} onClose={() => setDialog(null)} />}
       {dialog === 'series' && <AddToSeriesDialog book={b} onClose={() => setDialog(null)} onDone={() => {
         setDialog(null)
         void qc.invalidateQueries({ queryKey: ['book', id] })

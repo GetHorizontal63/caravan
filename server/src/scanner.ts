@@ -250,14 +250,14 @@ const QUIET_MS = Number(process.env.CARAVAN_WATCH_DELAY_MS ?? 15_000)
 const watchers = new Map<string, FSWatcher>()
 const queued = new Map<number, ReturnType<typeof setTimeout>>()
 
-function queueScan(libraryId: number) {
+export function queueScan(libraryId: number, delay = QUIET_MS) {
   clearTimeout(queued.get(libraryId))
   const run = () => {
     if (scanState.running) { queued.set(libraryId, setTimeout(run, QUIET_MS)); return }
     queued.delete(libraryId)
     scanLibrary(libraryId).catch(e => console.warn(`[watch] ${(e as Error).message}`))
   }
-  queued.set(libraryId, setTimeout(run, QUIET_MS))
+  queued.set(libraryId, setTimeout(run, delay))
 }
 
 function relevant(file: string | null | undefined) {

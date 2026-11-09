@@ -13,6 +13,7 @@ import opdsRoutes from './routes/opds.ts'
 import collectionRoutes from './routes/collections.ts'
 import backgroundRoutes from './routes/backgrounds.ts'
 import seriesRoutes from './routes/series.ts'
+import shelfRoutes from './routes/shelf.ts'
 import { startScheduler, scanAll } from './scanner.ts'
 
 const app = Fastify({
@@ -45,6 +46,7 @@ await app.register(opdsRoutes)
 await app.register(collectionRoutes)
 await app.register(backgroundRoutes)
 await app.register(seriesRoutes)
+await app.register(shelfRoutes)
 
 app.setErrorHandler((error, req, reply) => {
   const err = error as Error & { statusCode?: number }

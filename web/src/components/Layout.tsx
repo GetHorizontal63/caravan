@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Home, Library as LibraryIcon, Search, Settings, Shield, LogOut, Smartphone } from 'lucide-react'
+import { Home, Library as LibraryIcon, Search, Settings, Shield, LogOut, Smartphone, BookHeart } from 'lucide-react'
 import { api, isNativeApp, type Library } from '../api'
 import { APP_NAME, SATCHEL_LATEST_URL } from '../brand'
 import { SatchelUpdateRibbon } from './SatchelUpdate'
@@ -20,7 +20,9 @@ export default function Layout() {
   const appearance = useAppearance()
   useEffect(() => { window.scrollTo(0, 0) }, [loc.pathname])
 
-  const firstLib = libs.data?.[0]
+  // the Library tab goes back to the library you last looked at
+  const lastId = (() => { try { return localStorage.getItem('caravan.lastLibrary') } catch { return null } })()
+  const firstLib = libs.data?.find(l => String(l.id) === lastId) ?? libs.data?.[0]
   return (
     <SelectionProvider>
       <header className="app-header">
@@ -28,6 +30,7 @@ export default function Layout() {
         <nav className="top-nav">
           <NavLink to="/" end>Home</NavLink>
           {libs.data?.map(l => <NavLink key={l.id} to={`/library/${l.id}`}>{l.name}</NavLink>)}
+          <NavLink to="/shelf">My Shelf</NavLink>
         </nav>
         <form className="header-search" onSubmit={e => { e.preventDefault(); if (q.trim()) nav(`/search?q=${encodeURIComponent(q.trim())}`) }}>
           <Search size={18} />
@@ -51,6 +54,7 @@ export default function Layout() {
       <nav className="tabbar">
         <NavLink to="/" end><Home size={22} />Home</NavLink>
         <NavLink to={firstLib ? `/library/${firstLib.id}` : '/'} className={() => (loc.pathname.startsWith('/library') ? 'active' : '')}><LibraryIcon size={22} />Library</NavLink>
+        <NavLink to="/shelf"><BookHeart size={22} />My Shelf</NavLink>
         <NavLink to="/search"><Search size={22} />Search</NavLink>
         <NavLink to="/settings"><Settings size={22} />Settings</NavLink>
       </nav>

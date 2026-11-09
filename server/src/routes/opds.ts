@@ -8,6 +8,7 @@ import { getBook, authorsOf, filesOf } from '../books.ts'
 import { coverPath } from '../covers.ts'
 import { formatOf } from '../formats.ts'
 import { queryBooks } from './books.ts'
+import { canSeeBook, VISIBLE_BOOK } from '../access.ts'
 
 /**
  * OPDS 1.2 catalog (Atom) for e-ink devices and third-party reader apps.
@@ -89,7 +90,7 @@ export default async function opdsRoutes(app: FastifyInstance) {
   })
 
   app.get('/opds', async (_req, reply) => {
-    const libs = db.prepare('SELECT id, name FROM libraries ORDER BY name').all() as { id: number; name: string }[]
+    const libs = db.prepare('SELECT id, name FROM libraries WHERE owner_id IS NULL ORDER BY name').all() as { id: number; name: string }[]
     const body = [
       navEntry('jr:reading', 'Continue reading', '/opds/books?status=reading&sort=recent', 'Books you have started'),
       navEntry('jr:recent', 'Recently added', '/opds/books?sort=added'),
@@ -108,8 +109,9 @@ export default async function opdsRoutes(app: FastifyInstance) {
   <Url type="${ACQ}" template="/opds/books?q={searchTerms}"/>
 </OpenSearchDescription>`)
 
-  app.get('/opds/authors', async (_req, reply) => {
-    const rows = db.prepare('SELECT a.id, a.name, COUNT(*) AS n FROM authors a JOIN book_authors ba ON ba.author_id = a.id GROUP BY a.id ORDER BY a.sort_name').all() as { id: number; name: string; n: number }[]
+  app.get('/opds/authors', async (req, reply) => {
+    const rows = db.prepare(`SELECT a.id, a.name, COUNT(*) AS n FROM authors a JOIN book_authors ba ON ba.author_id = a.id JOIN books b ON b.id = ba.book_id
+      WHERE ${VISIBLE_BOOK} GROUP BY a.id ORDER BY a.sort_name`).all({ user: req.user!.id }) as { id: number; name: string; n: number }[]
     reply.type(`${NAV}; charset=utf-8`)
     return feed('jr:authors', 'Authors', '/opds/authors', rows.map(r => navEntry(`jr:author:${r.id}`, r.name, `/opds/books?author=${r.id}&sort=series`, `${r.n} book(s)`)).join('\n'))
   })
@@ -129,13 +131,13 @@ export default async function opdsRoutes(app: FastifyInstance) {
 
   app.get<{ Params: { id: string } }>('/opds/books/:id/cover', async (req, reply) => {
     const b = getBook(Number(req.params.id))
-    if (!b?.cover) return reply.code(404).send('')
+    if (!b?.cover || !canSeeBook(b.id, req.user!.id)) return reply.code(404).send('')
     return reply.type('image/jpeg').send(fs.createReadStream(coverPath(b.cover)))
   })
 
   app.get<{ Params: { id: string; '*': string } }>('/opds/books/:id/file/*', async (req, reply) => {
     const b = getBook(Number(req.params.id))
-    if (!b) return reply.code(404).send('')
+    if (!b || !canSeeBook(b.id, req.user!.id)) return reply.code(404).send('')
     // the file name in the URL says which version
     const name = decodeURIComponent(req.params['*'] ?? '')
     const file = filesOf(b).find(f => path.basename(f.path) === name)?.path ?? b.path

@@ -181,6 +181,18 @@ const migrations: string[] = [
     fetched_at INTEGER NOT NULL
   );
   `,
+  // My Shelf: a private library per user (owner_id), and the people each shelf book is shared with
+  `
+  ALTER TABLE libraries ADD COLUMN owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+  CREATE UNIQUE INDEX libraries_owner ON libraries(owner_id) WHERE owner_id IS NOT NULL;
+  CREATE TABLE shelf_shares (
+    book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (book_id, user_id)
+  );
+  CREATE INDEX shelf_shares_user ON shelf_shares(user_id);
+  `,
 ]
 
 const current = (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version

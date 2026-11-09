@@ -13,6 +13,7 @@ import SearchPage from './pages/Search'
 import SettingsPage from './pages/Settings'
 import CollectionPage from './pages/Collection'
 import SeriesPage from './pages/Series'
+import ShelfPage from './pages/Shelf'
 
 // The reader pulls in foliate-js and pdf.js; admin is rarely used. Load both on demand.
 const ReaderPage = lazy(() => import('./reader/ReaderPage'))
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="collection/:id" element={<CollectionPage />} />
           <Route path="series/:name" element={<SeriesPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="shelf" element={<ShelfPage />} />
           <Route path="admin/*" element={user?.isAdmin ? <AdminPage /> : <Navigate to="/" />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Route>

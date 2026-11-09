@@ -31,9 +31,11 @@ export const paths = {
   covers: path.join(config.dataDir, 'covers'),
   backgrounds: path.join(config.dataDir, 'backgrounds'),
   cache: path.join(config.dataDir, 'cache'),
+  /** each user's private shelf: shelves/<user id>/ */
+  shelves: path.join(config.dataDir, 'shelves'),
 }
 
-for (const dir of [config.dataDir, paths.covers, paths.cache, paths.backgrounds]) fs.mkdirSync(dir, { recursive: true })
+for (const dir of [config.dataDir, paths.covers, paths.cache, paths.backgrounds, paths.shelves]) fs.mkdirSync(dir, { recursive: true })
 
 // Carry over a database from before the rename (JellyReader -> Caravan).
 const legacyDb = path.join(config.dataDir, 'jellyreader.db')

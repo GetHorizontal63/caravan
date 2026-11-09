@@ -8,6 +8,7 @@ import { coverPath } from '../covers.ts'
 import { formatOf } from '../formats.ts'
 import { readableFile } from '../convert.ts'
 import { define, DictionaryError } from '../dictionary.ts'
+import { canSeeBook, VISIBLE_BOOK } from '../access.ts'
 
 type Q = Record<string, string | undefined>
 
@@ -22,7 +23,8 @@ const SORTS: Record<string, string> = {
 
 /** Shared filter builder for the grid, search and OPDS. */
 export function queryBooks(userId: number, q: Q) {
-  const where = ['b.missing = 0']
+  // never anything from someone else's shelf unless it was shared with this user
+  const where = ['b.missing = 0', VISIBLE_BOOK]
   const params: Record<string, string | number> = { user: userId }
   if (q.library) { where.push('b.library_id = :library'); params.library = Number(q.library) }
   if (q.q?.trim()) {
@@ -37,6 +39,7 @@ export function queryBooks(userId: number, q: Q) {
   if (q.series) { where.push('b.series = :series'); params.series = q.series }
   if (q.tag) { where.push('EXISTS (SELECT 1 FROM book_tags bt JOIN tags t ON t.id = bt.tag_id WHERE bt.book_id = b.id AND t.name = :tag)'); params.tag = q.tag }
   if (q.format) { where.push('b.format = :format'); params.format = q.format }
+  if (q.shared === '1') { where.push('EXISTS (SELECT 1 FROM shelf_shares sh2 WHERE sh2.book_id = b.id AND sh2.user_id = :user)') }
   if (q.collection) { where.push('EXISTS (SELECT 1 FROM collection_books cb WHERE cb.book_id = b.id AND cb.collection_id = :collection)'); params.collection = Number(q.collection) }
   switch (q.status) {
     case 'unread': where.push('(ub.fraction IS NULL OR ub.fraction = 0) AND COALESCE(ub.finished, 0) = 0'); break
@@ -57,9 +60,10 @@ export function queryBooks(userId: number, q: Q) {
   return { total, items: rows.map(summarize) }
 }
 
-function requireBook(id: string, reply: FastifyReply): BookRow | undefined {
+/** The book, if it exists and this user may see it (another user's shelf answers "not found", not "forbidden"). */
+function requireBook(id: string, reply: FastifyReply, userId: number): BookRow | undefined {
   const b = getBook(Number(id))
-  if (!b) reply.code(404).send({ error: 'Book not found' })
+  if (!b || !canSeeBook(b.id, userId)) { reply.code(404).send({ error: 'Book not found' }); return undefined }
   return b
 }
 
@@ -69,7 +73,7 @@ export default async function bookRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireUser)
 
   app.get('/api/libraries', async req => {
-    const libs = db.prepare(`SELECT l.*, (SELECT COUNT(*) FROM books b WHERE b.library_id = l.id AND b.missing = 0) AS count FROM libraries l ORDER BY l.name`).all() as any[]
+    const libs = db.prepare(`SELECT l.*, (SELECT COUNT(*) FROM books b WHERE b.library_id = l.id AND b.missing = 0) AS count FROM libraries l WHERE l.owner_id IS NULL ORDER BY l.name`).all() as any[]
     return libs.map(l => ({ id: l.id, name: l.name, kind: l.kind, paths: req.user!.is_admin ? safeJson(l.paths, []) : undefined, fetchMetadata: !!l.fetch_metadata, count: l.count, lastScan: l.last_scan }))
   })
 
@@ -79,7 +83,7 @@ export default async function bookRoutes(app: FastifyInstance) {
     const uid = req.user!.id
     const continueReading = queryBooks(uid, { status: 'reading', sort: 'recent', limit: '20' }).items
     const recentlyAdded = queryBooks(uid, { sort: 'added', limit: '24' }).items
-    const libs = db.prepare('SELECT id, name, kind FROM libraries ORDER BY name').all() as { id: number; name: string; kind: string }[]
+    const libs = db.prepare('SELECT id, name, kind FROM libraries WHERE owner_id IS NULL ORDER BY name').all() as { id: number; name: string; kind: string }[]
     const favorites = queryBooks(uid, { status: 'favorite', sort: 'recent', limit: '20' }).items
     return {
       continueReading,
@@ -89,29 +93,30 @@ export default async function bookRoutes(app: FastifyInstance) {
     }
   })
 
-  app.get('/api/authors', async () =>
+  app.get('/api/authors', async req =>
     db.prepare(`SELECT a.id, a.name, COUNT(*) AS count FROM authors a JOIN book_authors ba ON ba.author_id = a.id JOIN books b ON b.id = ba.book_id AND b.missing = 0
-      GROUP BY a.id ORDER BY a.sort_name`).all())
+      WHERE ${VISIBLE_BOOK} GROUP BY a.id ORDER BY a.sort_name`).all({ user: req.user!.id }))
 
   app.get<{ Querystring: { library?: string } }>('/api/series', async req => {
     const lib = req.query.library ? Number(req.query.library) : null
     return db.prepare(`SELECT series AS name, COUNT(*) AS count, MIN(id) AS firstBook,
-        (SELECT id FROM books b2 WHERE b2.series = b.series AND b2.cover IS NOT NULL AND b2.missing = 0 ORDER BY b2.series_index LIMIT 1) AS coverBook,
-        (SELECT cover FROM books b2 WHERE b2.series = b.series AND b2.cover IS NOT NULL AND b2.missing = 0 ORDER BY b2.series_index LIMIT 1) AS coverFile
-      FROM books b WHERE series IS NOT NULL AND missing = 0 AND (:lib IS NULL OR library_id = :lib)
-      GROUP BY series ORDER BY series COLLATE NOCASE`).all({ lib })
+        (SELECT id FROM books b2 WHERE b2.series = b.series AND b2.cover IS NOT NULL AND b2.missing = 0 AND b2.library_id = b.library_id ORDER BY b2.series_index LIMIT 1) AS coverBook,
+        (SELECT cover FROM books b2 WHERE b2.series = b.series AND b2.cover IS NOT NULL AND b2.missing = 0 AND b2.library_id = b.library_id ORDER BY b2.series_index LIMIT 1) AS coverFile
+      FROM books b WHERE series IS NOT NULL AND missing = 0 AND (:lib IS NULL OR library_id = :lib) AND ${VISIBLE_BOOK}
+      GROUP BY series ORDER BY series COLLATE NOCASE`).all({ lib, user: req.user!.id })
   })
 
-  app.get('/api/tags', async () =>
-    db.prepare('SELECT t.name, COUNT(*) AS count FROM tags t JOIN book_tags bt ON bt.tag_id = t.id GROUP BY t.id ORDER BY count DESC LIMIT 200').all())
+  app.get('/api/tags', async req =>
+    db.prepare(`SELECT t.name, COUNT(*) AS count FROM tags t JOIN book_tags bt ON bt.tag_id = t.id JOIN books b ON b.id = bt.book_id
+      WHERE ${VISIBLE_BOOK} GROUP BY t.id ORDER BY count DESC LIMIT 200`).all({ user: req.user!.id }))
 
   app.get<{ Params: { id: string } }>('/api/books/:id', async (req, reply) => {
-    const b = requireBook(req.params.id, reply)
+    const b = requireBook(req.params.id, reply, req.user!.id)
     return b && detail(b, req.user!.id)
   })
 
   app.get<{ Params: { id: string } }>('/api/books/:id/cover', async (req, reply) => {
-    const b = requireBook(req.params.id, reply)
+    const b = requireBook(req.params.id, reply, req.user!.id)
     if (!b) return
     if (!b.cover) return reply.code(404).send({ error: 'No cover' })
     reply.header('Cache-Control', 'private, max-age=31536000, immutable').type('image/jpeg')
@@ -119,7 +124,7 @@ export default async function bookRoutes(app: FastifyInstance) {
   })
 
   app.get<{ Params: { id: string } }>('/api/books/:id/spine', async (req, reply) => {
-    const b = requireBook(req.params.id, reply)
+    const b = requireBook(req.params.id, reply, req.user!.id)
     if (!b) return
     if (!b.spine) return reply.code(404).send({ error: 'No spine image' })
     reply.header('Cache-Control', 'private, max-age=31536000, immutable').type('image/jpeg')
@@ -128,7 +133,7 @@ export default async function bookRoutes(app: FastifyInstance) {
 
   /** Original file, as a download. `?file=` picks a version (default: the primary one). */
   app.get<{ Params: { id: string }; Querystring: { file?: string } }>('/api/books/:id/file', async (req, reply) => {
-    const b = requireBook(req.params.id, reply)
+    const b = requireBook(req.params.id, reply, req.user!.id)
     if (!b) return
     const f = fileOf(b, req.query.file)
     const info = formatOf(f.path)
@@ -140,7 +145,7 @@ export default async function bookRoutes(app: FastifyInstance) {
 
   /** File in a format the in-browser reader can open (converted and cached when needed). `?file=` picks a version. */
   app.get<{ Params: { id: string }; Querystring: { file?: string } }>('/api/books/:id/content', async (req, reply) => {
-    const b = requireBook(req.params.id, reply)
+    const b = requireBook(req.params.id, reply, req.user!.id)
     if (!b) return
     // no version asked for: resume the one this reader last used
     const last = db.prepare('SELECT file_id FROM user_books WHERE user_id = ? AND book_id = ?').get(req.user!.id, b.id) as { file_id: number | null } | undefined
@@ -168,7 +173,7 @@ export default async function bookRoutes(app: FastifyInstance) {
   }
 
   app.put<{ Params: { id: string }; Body: { locator?: string; fraction?: number; fileId?: number } }>('/api/books/:id/progress', async (req, reply) => {
-    const b = requireBook(req.params.id, reply)
+    const b = requireBook(req.params.id, reply, req.user!.id)
     if (!b) return
     const fraction = Math.max(0, Math.min(1, Number(req.body?.fraction) || 0))
     const patch: Record<string, unknown> = { locator: req.body?.locator ?? null, fraction, last_read: now(), file_id: fileOf(b, req.body?.fileId).id || null }
@@ -178,7 +183,7 @@ export default async function bookRoutes(app: FastifyInstance) {
   })
 
   app.post<{ Params: { id: string }; Body: { finished?: boolean; favorite?: boolean } }>('/api/books/:id/state', async (req, reply) => {
-    const b = requireBook(req.params.id, reply)
+    const b = requireBook(req.params.id, reply, req.user!.id)
     if (!b) return
     const patch: Record<string, unknown> = {}
     if (typeof req.body?.finished === 'boolean') {
@@ -210,7 +215,7 @@ export default async function bookRoutes(app: FastifyInstance) {
    * failed, otherwise the reader should look for the text and report back via PUT /anchor.
    */
   app.get<{ Params: { id: string }; Querystring: { file?: string } }>('/api/books/:id/annotations', async (req, reply) => {
-    const b = requireBook(req.params.id, reply)
+    const b = requireBook(req.params.id, reply, req.user!.id)
     if (!b) return
     const f = fileOf(b, req.query.file)
     const rows = db.prepare(`SELECT a.id, a.kind, a.locator, a.text, a.note, a.color, a.chapter, a.created_at AS createdAt, a.fraction, a.file_id AS fileId,
@@ -226,7 +231,7 @@ export default async function bookRoutes(app: FastifyInstance) {
   })
 
   app.post<{ Params: { id: string }; Body: { kind?: string; locator: string; text?: string; note?: string; color?: string; chapter?: string; fraction?: number; fileId?: number } }>('/api/books/:id/annotations', async (req, reply) => {
-    const b = requireBook(req.params.id, reply)
+    const b = requireBook(req.params.id, reply, req.user!.id)
     if (!b) return
     const { kind = 'highlight', locator, text, note, color, chapter, fraction, fileId } = req.body ?? ({} as any)
     if (!locator) return reply.code(400).send({ error: 'locator is required' })
