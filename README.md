@@ -418,6 +418,8 @@ The shelf has two tabs, **My books** and **Shared with me**, with the same sorti
 
 ## Satchel, the Android app
 
+<img src="docs/img/satchel-logo.png" width="64" align="right" alt="Satchel logo">
+
 | Connect | Your library | Reading |
 |:-:|:-:|:-:|
 | <img src="docs/img/satchel-connect.jpg" width="230" alt="Satchel's Connect to a server screen"> | <img src="docs/img/satchel-shelf.jpg" width="230" alt="The bookcase on a phone"> | <img src="docs/img/satchel-reader.jpg" width="230" alt="Dune as a single page on the desk, on a phone"> |
@@ -657,6 +659,7 @@ web/src/             pages, components, theme; reader/ holds the engines (foliat
 mobile/              Satchel: Capacitor 8 Android project (android/) and its README template
 desktop/             Electron shell
 docs/img/            pictures used in this README
+logos/               the Caravan and Satchel logos at full size (colour, on a background, and single-colour)
 scripts/windows/     start-up task and launcher for Windows
 ```
 

@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { api, isNativeApp, serverUrl, setServerUrl, type User } from '../api'
 import { APP_NAME, isCaravanServer } from '../brand'
-import { logoFor, useAppearance } from '../theme'
+import { appLogo } from '../theme'
 import { useSession } from '../session'
 
 const DECO: [string, string, string, string][] = [
@@ -11,7 +11,6 @@ const DECO: [string, string, string, string][] = [
 ]
 
 export function AuthCard({ title, subtitle, children }: { title: string; subtitle?: ReactNode; children: ReactNode }) {
-  const { palette } = useAppearance()
   return (
     <div className="auth">
       <div className="auth-deco" aria-hidden>
@@ -20,7 +19,7 @@ export function AuthCard({ title, subtitle, children }: { title: string; subtitl
         ))}
       </div>
       <div className="card">
-        <div className="brand"><img src={logoFor(palette)} alt="" />{APP_NAME}</div>
+        <div className="brand"><img src={appLogo()} alt="" />{APP_NAME}</div>
         <h1>{title}</h1>
         {subtitle && <p className="muted">{subtitle}</p>}
         {children}

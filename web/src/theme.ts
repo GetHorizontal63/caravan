@@ -72,5 +72,8 @@ export function useAppearance(): Appearance {
   return useSyncExternalStore(cb => { listeners.add(cb); return () => listeners.delete(cb) }, () => current)
 }
 
-/** Logo that follows the chosen palette. */
-export const logoFor = (p: Palette) => `./icon-${p}.svg`
+/** Each palette is a brand's colours: Terracotta & Amber are Caravan's, Oasis & Saddle are Satchel's. */
+export const logoFor = (p: Palette) => (p === 'oasis' ? './logo-satchel.png' : './logo-caravan.png')
+
+/** This app's own logo: the Satchel bag in the Android app, Caravan's book and sunrise everywhere else. */
+export const appLogo = () => (isNativeApp() ? './logo-satchel.png' : './logo-caravan.png')

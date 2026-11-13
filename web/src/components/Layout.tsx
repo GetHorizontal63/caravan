@@ -8,7 +8,7 @@ import { SatchelUpdateRibbon } from './SatchelUpdate'
 import { SelectionBar, SelectionProvider } from './selection'
 import { useSession } from '../session'
 import { ToastHost } from './ui'
-import { logoFor, useAppearance } from '../theme'
+import { appLogo } from '../theme'
 import { syncOutbox } from '../offline'
 
 export default function Layout() {
@@ -18,7 +18,6 @@ export default function Layout() {
   const [q, setQ] = useState('')
   const libs = useQuery({ queryKey: ['libraries'], queryFn: () => api<Library[]>('/api/libraries') })
 
-  const appearance = useAppearance()
   useEffect(() => { window.scrollTo(0, 0) }, [loc.pathname])
   // back online (or just started): send anything changed while offline
   useEffect(() => { void syncOutbox() }, [])
@@ -29,7 +28,7 @@ export default function Layout() {
   return (
     <SelectionProvider>
       <header className="app-header">
-        <NavLink to="/" className="brand" title={info?.serverName}><img src={logoFor(appearance.palette)} alt="" />{APP_NAME}</NavLink>
+        <NavLink to="/" className="brand" title={info?.serverName}><img src={appLogo()} alt="" />{APP_NAME}</NavLink>
         <nav className="top-nav">
           <NavLink to="/" end>Home</NavLink>
           {libs.data?.map(l => <NavLink key={l.id} to={`/library/${l.id}`}>{l.name}</NavLink>)}
